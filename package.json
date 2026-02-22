@@ -4,7 +4,7 @@
   "description": "Collaborative research note-taking app",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/migrate.js",
     "start": "next start",
     "lint": "next lint"
   },

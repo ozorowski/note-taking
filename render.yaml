@@ -2,7 +2,7 @@ services:
   - type: web
     name: notetaking
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npm run build && node scripts/migrate.js
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
