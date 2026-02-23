@@ -11,14 +11,23 @@ export async function POST(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(projectId, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { name, roleToAssign = 'editor' } = await request.json()
-  if (!name?.trim()) return badRequest('Name is required')
+  const { email, roleToAssign = 'editor' } = await request.json()
+  if (!email?.trim()) return badRequest('Email is required')
   if (!['editor','viewer'].includes(roleToAssign)) return badRequest('Role must be editor or viewer')
 
-  const userResult = await query('SELECT id, name FROM users WHERE name ILIKE $1 LIMIT 1', [name.trim()])
-  if (userResult.rows.length === 0) return NextResponse.json({ error: 'No user found with that name' }, { status: 404 })
+  const userResult = await query(
+    'SELECT id, name FROM users WHERE email = $1 AND is_guest = false LIMIT 1',
+    [email.toLowerCase().trim()]
+  )
+  if (userResult.rows.length === 0) {
+    return NextResponse.json(
+      { error: 'No Trace account found for that email. Ask them to sign in with their email first.' },
+      { status: 404 }
+    )
+  }
 
   const invited = userResult.rows[0]
+  if (invited.id === user.user_id) return badRequest('You are already a member')
   await query(
     `INSERT INTO project_memberships (project_id, user_id, role)
      VALUES ($1, $2, $3) ON CONFLICT (project_id, user_id) DO UPDATE SET role = $3`,

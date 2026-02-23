@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ noteId: string }> }
 
@@ -46,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     `UPDATE notes SET content = COALESCE($1, content), interview_id = COALESCE($2, interview_id), updated_at = NOW() WHERE id = $3 RETURNING *`,
     [content?.trim() || null, interview_id !== undefined ? interview_id : null, noteId]
   )
+  await broadcastProjectUpdate(note.project_id)
   return NextResponse.json(result.rows[0])
 }
 
@@ -58,5 +60,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const role = await getProjectRole(note.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
   await query('DELETE FROM notes WHERE id = $1', [noteId])
+  await broadcastProjectUpdate(note.project_id)
   return NextResponse.json({ success: true })
 }

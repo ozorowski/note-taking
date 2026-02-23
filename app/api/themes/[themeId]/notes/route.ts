@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, forbidden, notFound, badRequest, getProjectRole } from '@/lib/api-helpers'
+import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ themeId: string }> }
 
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     'INSERT INTO note_themes (note_id, theme_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
     [note_id, themeId]
   )
+  await broadcastProjectUpdate(theme.project_id)
   return NextResponse.json({ success: true })
 }
 
@@ -37,5 +39,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (!noteId) return badRequest('noteId required')
 
   await query('DELETE FROM note_themes WHERE note_id = $1 AND theme_id = $2', [noteId, themeId])
+  await broadcastProjectUpdate(theme.project_id)
   return NextResponse.json({ success: true })
 }

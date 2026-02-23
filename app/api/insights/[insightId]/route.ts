@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ insightId: string }> }
 
@@ -38,6 +39,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     `UPDATE insights SET content = COALESCE($1, content), evidence_summary = COALESCE($2, evidence_summary), updated_at = NOW() WHERE id = $3 RETURNING *`,
     [content?.trim() || null, evidence_summary !== undefined ? evidence_summary?.trim() ?? null : null, insightId]
   )
+  await broadcastProjectUpdate(insight.project_id)
   return NextResponse.json(result.rows[0])
 }
 
@@ -50,5 +52,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const role = await getProjectRole(insight.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
   await query('DELETE FROM insights WHERE id = $1', [insightId])
+  await broadcastProjectUpdate(insight.project_id)
   return NextResponse.json({ success: true })
 }

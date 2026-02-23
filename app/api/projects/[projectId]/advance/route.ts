@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole, getProjectCounts, logActivity } from '@/lib/api-helpers'
 import { canAdvancePhase, nextPhase } from '@/lib/phases'
+import { broadcastProjectUpdate } from '@/lib/pusher'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   const user = await getAuthedUser()
@@ -31,6 +32,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ pr
   )
 
   await logActivity(projectId, user.user_id, `advanced phase to ${next}`, 'project', projectId)
+  await broadcastProjectUpdate(projectId)
 
   return NextResponse.json(result.rows[0])
 }
