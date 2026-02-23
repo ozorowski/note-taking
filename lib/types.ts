@@ -64,3 +64,131 @@ export interface AuthToken {
   iat: number
   exp: number
 }
+
+// ── Trace types ───────────────────────────────────────────────────────────────
+
+export type Phase = 'interviews' | 'notes' | 'themes' | 'insights' | 'recommendations' | 'complete'
+export type PhaseStatus = 'locked' | 'in_progress' | 'complete'
+export type Role = 'owner' | 'editor' | 'viewer'
+
+export interface Project {
+  id: string
+  title: string
+  description: string | null
+  current_phase: Phase
+  owner_id: string
+  demo: boolean
+  created_at: Date
+  updated_at: Date
+}
+
+export interface ProjectMembership {
+  id: string
+  project_id: string
+  user_id: string
+  role: Role
+  created_at: Date
+}
+
+export interface Interview {
+  id: string
+  project_id: string
+  participant_name: string
+  raw_notes: string | null
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+export interface Note {
+  id: string
+  project_id: string
+  interview_id: string | null
+  content: string
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+  // joined fields
+  tags?: string[]
+  interview_name?: string
+  creator_name?: string
+  theme_ids?: string[]
+}
+
+export interface Theme {
+  id: string
+  project_id: string
+  title: string
+  description: string | null
+  ai_suggested_name: string | null
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+  // joined fields
+  note_count?: number
+  notes?: Note[]
+}
+
+export interface Insight {
+  id: string
+  project_id: string
+  content: string
+  evidence_summary: string | null
+  ai_draft: string | null
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+  // joined fields
+  themes?: Theme[]
+  theme_ids?: string[]
+  creator_name?: string
+}
+
+export interface Recommendation {
+  id: string
+  project_id: string
+  content: string
+  rationale: string | null
+  ai_draft: string | null
+  created_by: string | null
+  created_at: Date
+  updated_at: Date
+  // joined fields
+  insights?: Insight[]
+  insight_ids?: string[]
+  creator_name?: string
+}
+
+export interface ProjectActivity {
+  id: string
+  project_id: string
+  user_id: string | null
+  action: string
+  entity_type: string | null
+  entity_id: string | null
+  created_at: Date
+  user_name?: string
+}
+
+export interface ProjectCounts {
+  interview_count: number
+  note_count: number
+  clustered_note_count: number
+  theme_count: number
+  insight_count: number
+  insights_with_themes: number
+  recommendation_count: number
+  recommendations_with_insights: number
+  notes_linked_to_interview: number
+}
+
+export interface FullProject extends Project {
+  role: Role
+  members: Array<{ id: string; name: string; role: Role }>
+  interviews: Interview[]
+  notes: Note[]
+  themes: Theme[]
+  insights: Insight[]
+  recommendations: Recommendation[]
+  counts: ProjectCounts
+}
