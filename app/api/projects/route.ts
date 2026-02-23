@@ -188,37 +188,37 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
     )
   }
 
-  // ── 6 pre-seeded insights, each linked to 1–2 themes ─────────────────────
+  // ── 6 pre-seeded insights in structured format ───────────────────────────
   const insightsData = [
     {
-      content: 'Synthesis time is dominated by tool logistics, not analysis. Researchers spend an estimated 40–60% of synthesis time managing artefacts across disconnected tools rather than doing analytical thinking.',
-      evidence: 'Every participant described switching between 3–5 tools per project. Alex and Tom both reported setup and formatting alone consuming hours.',
+      content: 'When conducting synthesis across a project, researchers switch between 3–5 disconnected tools (Miro, Notion, Docs, Slack), because no single tool covers the full workflow from raw notes to recommendations, which leads to an estimated 40–60% of synthesis time being spent on logistics rather than analysis.',
+      evidence: 'Alex had 5 browser tabs open for the same project. Tom described formatting and setup consuming more time than thinking. Every participant named at least 3 separate tools used in a single project.',
       themes: [0, 4], // Tool fragmentation + Synthesis bottleneck
     },
     {
-      content: 'The absence of evidence trails undermines stakeholder trust in recommendations. Without a navigable link from recommendation to source quote, findings are dismissed as subjective opinion in review meetings.',
-      evidence: 'Priya reported recommendations being challenged in presentations. Sara couldn\'t defend her recommendations when pushed back. Both lacked audit trails.',
-      themes: [1, 6], // Traceability + Credibility
+      content: 'When presenting recommendations to stakeholders, researchers cannot trace findings back to specific participant quotes, because synthesis artefacts are stored across multiple disconnected documents without cross-references, which leads to recommendations being challenged as subjective opinion and trust in the research eroding.',
+      evidence: 'Priya reported recommendations being challenged in presentations. Sara said she couldn\'t defend her findings when pushed back. Both described having no audit trail to point to.',
+      themes: [1, 6], // Evidence traceability + Stakeholder credibility
     },
     {
-      content: 'Synthesis quality is inconsistent across the team because there is no shared methodology. Individual researchers develop personal workflows, making it impossible to compare studies or build institutional knowledge.',
-      evidence: 'Marcus manages 8 researchers, all using different approaches. Priya has been unable to give juniors a replicable process. Tom received vague feedback on his insights with no framework to improve.',
-      themes: [2, 3], // Process + Collaboration
+      content: 'When a new researcher joins a team or project, they cannot follow a consistent synthesis methodology, because each researcher has developed a personal workflow in the absence of shared standards, which leads to inconsistent insight quality and the inability to compare findings across studies or researchers.',
+      evidence: 'Marcus manages 8 researchers, all using different approaches. Priya has been unable to provide a replicable process for junior researchers. Tom received vague feedback on his insights with no framework to improve from.',
+      themes: [2, 3], // Process inconsistency + Collaboration & handoff
     },
     {
-      content: 'The transition from themes to insights is the highest-friction, most confidence-reducing step in the workflow. Researchers describe this leap as "arbitrary" and are unsure whether the output meets quality standards.',
-      evidence: 'Alex described the step as "arbitrary." Tom got feedback his insights were too vague. Sara admitted she presents bullets rather than real insights because she\'s unsure what a good insight looks like.',
-      themes: [4, 2], // Bottleneck + Process
+      content: 'When moving from clustered themes to written insights, researchers experience peak uncertainty and friction, because there is no structured framework or quality bar to guide the transition, which leads to insights that are vague, skipped under time pressure, or not credible enough to drive decisions.',
+      evidence: 'Alex described the themes-to-insights step as "arbitrary." Tom received feedback his insights were too vague and didn\'t know how to fix them. Sara admitted she presents bullet points rather than insights because she\'s unsure what a good insight looks like.',
+      themes: [4, 2], // Synthesis bottleneck + Process inconsistency
     },
     {
-      content: 'Researchers want AI as a thinking partner, not a replacement for judgment. They welcome AI-generated drafts and suggestions as a starting point, but consistently want to review, rewrite, and own the final output.',
-      evidence: 'Sara would use AI drafts but wants to rewrite them herself. Marcus wants AI to flag weak evidence, not just generate text. Priya sees theme-naming as a high-value AI use case.',
-      themes: [5], // AI
+      content: 'When researchers hit blank-page moments during synthesis, they are open to AI-generated drafts as a starting point, because the cognitive effort of initial framing is high and time-consuming, which leads to a strong preference for an AI co-pilot model where they review and rewrite output rather than accept it wholesale.',
+      evidence: 'Sara explicitly said she would use AI drafts but wants to rewrite them. Marcus wants AI to flag weak evidence rather than just generate text. Priya identified theme-naming as the highest-value AI use case.',
+      themes: [5], // AI as a co-pilot
     },
     {
-      content: 'Knowledge loss at handoff is a structural risk that compounds over time. When a researcher transitions off a project or leaves the team, synthesis context and reasoning are not recoverable from current artefacts.',
-      evidence: 'Priya described handoffs causing colleagues to restart synthesis. Marcus noted that when a researcher leaves, context "walks out the door." Alex couldn\'t onboard a new team member without re-briefing from scratch.',
-      themes: [3, 1], // Collaboration + Traceability
+      content: 'When a researcher transitions off a project or leaves the organisation, all synthesis context and reasoning is permanently lost, because the logic behind insights and recommendations is stored in the researcher\'s memory rather than in a structured and navigable artefact, which leads to colleagues restarting synthesis from scratch and the same institutional knowledge being repeatedly rediscovered.',
+      evidence: 'Priya described handoffs routinely causing colleagues to start over. Marcus noted that researcher departures mean context "walks out the door." Alex couldn\'t onboard a new team member without a full verbal re-briefing.',
+      themes: [3, 1], // Collaboration & handoff + Evidence traceability
     },
   ]
 

@@ -25,7 +25,8 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([])
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiDraft, setAiDraft] = useState('')
+  const [aiDrafts, setAiDrafts] = useState<string[]>([])
+  const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
 
   async function addInsight(e: React.FormEvent) {
     e.preventDefault()
@@ -61,10 +62,11 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
     )
   }
 
-  async function generateDraft() {
+  async function generateDrafts() {
     if (selectedThemeIds.length === 0) return
     setAiLoading(true)
-    setAiDraft('')
+    setAiDrafts([])
+    setAddedIndices(new Set())
     const res = await fetch('/api/ai/draft-insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,14 +74,28 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
     })
     if (res.ok) {
       const data = await res.json()
-      setAiDraft(data.draft || data.content || '')
-      // Pre-fill the manual add form with the draft
-      setContent(data.draft || data.content || '')
-      setAdding(true)
+      setAiDrafts(data.drafts || (data.draft ? [data.draft] : []))
     }
     setAiLoading(false)
+  }
+
+  async function addDraftInsight(draft: string, index: number) {
+    const res = await fetch('/api/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, content: draft }),
+    })
+    if (res.ok) {
+      setAddedIndices(prev => new Set([...prev, index]))
+      onRefresh()
+    }
+  }
+
+  function closeAiPanel() {
     setShowAiPanel(false)
     setSelectedThemeIds([])
+    setAiDrafts([])
+    setAddedIndices(new Set())
   }
 
   return (
@@ -112,9 +128,12 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       {/* AI generation panel */}
       {showAiPanel && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-5">
-          <h3 className="text-sm font-semibold text-purple-800 mb-1">Generate insight with AI</h3>
-          <p className="text-xs text-purple-600 mb-4">
-            Pick the themes you want to draw from — AI will draft an insight based on the notes in those themes.
+          <h3 className="text-sm font-semibold text-purple-800 mb-1">Generate insights with AI</h3>
+          <p className="text-xs text-purple-600 mb-0.5">
+            Pick themes → AI drafts 3 insights using the structured format:
+          </p>
+          <p className="text-xs text-purple-500 italic mb-4">
+            When [context], [participants] [behaviour], because [underlying cause], which leads to [impact].
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
             {themes.map(t => (
@@ -136,21 +155,43 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
               <p className="text-xs text-purple-500">No themes yet — go back to the Themes phase first.</p>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 mb-4">
             <button
-              onClick={generateDraft}
+              onClick={generateDrafts}
               disabled={aiLoading || selectedThemeIds.length === 0}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40"
             >
               {aiLoading ? 'Generating...' : `Generate from ${selectedThemeIds.length} theme${selectedThemeIds.length !== 1 ? 's' : ''}`}
             </button>
             <button
-              onClick={() => { setShowAiPanel(false); setSelectedThemeIds([]) }}
+              onClick={closeAiPanel}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
-              Cancel
+              Close
             </button>
           </div>
+          {aiDrafts.length > 0 && (
+            <div className="space-y-3 border-t border-purple-200 pt-4">
+              <p className="text-xs font-semibold text-purple-700">
+                {aiDrafts.length} insight{aiDrafts.length !== 1 ? 's' : ''} generated — review and add:
+              </p>
+              {aiDrafts.map((draft, i) => (
+                <div key={i} className="bg-white border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-gray-700 leading-relaxed mb-3">{draft}</p>
+                  {addedIndices.has(i) ? (
+                    <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
+                  ) : (
+                    <button
+                      onClick={() => addDraftInsight(draft, i)}
+                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                    >
+                      + Add insight
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -158,17 +199,12 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       {adding && (
         <form onSubmit={addInsight} className="bg-white border border-gray-200 rounded-xl p-5 mb-5 space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Insight
-              {aiDraft && content === aiDraft && (
-                <span className="ml-2 text-xs text-purple-500 font-normal">✨ AI draft — edit before saving</span>
-              )}
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Insight</label>
             <textarea
               autoFocus
               value={content}
               onChange={e => setContent(e.target.value)}
-              placeholder="e.g. Users struggle to find saved files because the navigation hierarchy doesn't match their mental model"
+              placeholder="When [context], researchers [behaviour], because [underlying cause], which leads to [impact]."
               rows={3}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
@@ -183,7 +219,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent(''); setAiDraft('') }}
+              onClick={() => { setAdding(false); setContent('') }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel

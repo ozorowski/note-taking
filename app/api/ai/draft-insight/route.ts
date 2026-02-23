@@ -11,12 +11,12 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-          generationConfig: { maxOutputTokens: 200 },
+          generationConfig: { maxOutputTokens: 800 },
         }),
       }
     )
     const data = await res.json()
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Could not generate draft.'
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
   }
 
   if (process.env.OPENAI_API_KEY) {
@@ -29,14 +29,31 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 200,
+        max_tokens: 800,
       }),
     })
     const data = await res.json()
-    return data.choices?.[0]?.message?.content || 'Could not generate draft.'
+    return data.choices?.[0]?.message?.content || ''
   }
 
-  return null as unknown as string // signals no key set
+  return ''
+}
+
+function parseDrafts(raw: string): string[] {
+  // Build up multi-line numbered items
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+  const drafts: string[] = []
+  let current = ''
+  for (const line of lines) {
+    if (/^\d+[.)]\s/.test(line)) {
+      if (current.trim()) drafts.push(current.trim())
+      current = line.replace(/^\d+[.)]\s+/, '')
+    } else if (current) {
+      current += ' ' + line
+    }
+  }
+  if (current.trim()) drafts.push(current.trim())
+  return drafts.length >= 2 ? drafts : raw.trim() ? [raw.trim()] : []
 }
 
 export async function POST(request: NextRequest) {
@@ -56,18 +73,35 @@ export async function POST(request: NextRequest) {
   )
   const notesRes = await query(
     `SELECT n.content FROM notes n JOIN note_themes nt ON nt.note_id = n.id
-     WHERE nt.theme_id = ANY($1::uuid[]) AND n.project_id = $2 LIMIT 20`,
+     WHERE nt.theme_id = ANY($1::uuid[]) AND n.project_id = $2 LIMIT 30`,
     [theme_ids, project_id]
   )
 
   const themesList = themesRes.rows.map(t => `- ${t.title}${t.description ? ': ' + t.description : ''}`).join('\n')
   const notesList = notesRes.rows.map(n => `- ${n.content}`).join('\n')
 
-  const systemPrompt = 'You are a senior UX researcher. Draft a concise, evidence-based insight (2-3 sentences) from the themes and notes provided. Start with the key finding, not "Users...".'
+  const systemPrompt = `You are a senior UX researcher. Generate exactly 3 distinct, evidence-based insights from the themes and notes provided.
+
+Format each insight using this exact template — as a single sentence:
+When [context/situation], [participants] [behaviour or struggle], because [underlying cause], which leads to [impact or consequence].
+
+Rules:
+- Each insight must be one complete sentence following the template exactly.
+- Be specific — reference the actual themes and notes.
+- Do not start with "Users". Use "researchers", "teams", or a specific role.
+- Number them 1. 2. 3. — output nothing else.`
+
   const userPrompt = `Themes:\n${themesList}\n\nSupporting notes:\n${notesList}`
 
-  const aiResult = await callAI(systemPrompt, userPrompt)
-  const draft = aiResult ?? `[No AI key set] Based on themes: ${themesRes.rows.map(t => t.title).join(', ')} — add a GEMINI_API_KEY environment variable to get real AI drafts.`
+  const aiRaw = await callAI(systemPrompt, userPrompt)
 
-  return NextResponse.json({ draft })
+  if (!aiRaw) {
+    const stub = themesRes.rows.map(t => t.title).join(', ')
+    return NextResponse.json({
+      drafts: [`When working with themes like ${stub}, researchers struggle to synthesise findings, because no AI key is configured — add a GEMINI_API_KEY environment variable to get real AI drafts.`],
+    })
+  }
+
+  const drafts = parseDrafts(aiRaw)
+  return NextResponse.json({ drafts })
 }
