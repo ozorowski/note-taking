@@ -69,10 +69,5 @@ export async function POST(request: NextRequest) {
   const aiResult = await callAI(systemPrompt, userPrompt)
   const draft = aiResult ?? `[No AI key set] Based on themes: ${themesRes.rows.map(t => t.title).join(', ')} — add a GEMINI_API_KEY environment variable to get real AI drafts.`
 
-  await query(
-    `INSERT INTO ai_outputs (entity_type, entity_id, output_type, content) VALUES ('project', $1, 'insight_draft', $2)`,
-    [project_id, draft]
-  )
-
   return NextResponse.json({ draft })
 }
