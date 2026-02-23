@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const userResult = await query(
     `INSERT INTO users (name, email, is_guest)
      VALUES ($1, $2, false)
-     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, is_guest = false
      RETURNING id`,
     [defaultName, normalised]
   )

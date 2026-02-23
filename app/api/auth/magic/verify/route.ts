@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   // Find valid token
   const tokenResult = await query(
     `SELECT mlt.*, u.id as user_id FROM magic_link_tokens mlt
-     JOIN users u ON u.email = mlt.email AND u.is_guest = false
+     JOIN users u ON u.email = mlt.email
      WHERE mlt.token = $1 AND mlt.used_at IS NULL AND mlt.expires_at > NOW()`,
     [token]
   )
