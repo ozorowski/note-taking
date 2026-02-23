@@ -21,6 +21,8 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<InsightWithIds | null>(null)
 
+  const [newInsightThemeIds, setNewInsightThemeIds] = useState<string[]>([])
+
   // AI generation state
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([])
@@ -37,12 +39,23 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, content: content.trim() }),
     })
-    setLoading(false)
     if (res.ok) {
+      const insight = await res.json()
+      await Promise.all(
+        newInsightThemeIds.map(themeId =>
+          fetch(`/api/insights/${insight.id}/themes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme_id: themeId }),
+          })
+        )
+      )
       setContent('')
+      setNewInsightThemeIds([])
       setAdding(false)
       onRefresh()
     }
+    setLoading(false)
   }
 
   async function deleteInsight(id: string) {
@@ -86,6 +99,16 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       body: JSON.stringify({ project_id: projectId, content: draft }),
     })
     if (res.ok) {
+      const insight = await res.json()
+      await Promise.all(
+        selectedThemeIds.map(themeId =>
+          fetch(`/api/insights/${insight.id}/themes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme_id: themeId }),
+          })
+        )
+      )
       setAddedIndices(prev => new Set([...prev, index]))
       onRefresh()
     }
@@ -99,27 +122,25 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-semibold">Insights</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Synthesise patterns into key findings. Each insight must be linked to at least one theme.
-          </p>
-        </div>
+    <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold">Insights</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Synthesise patterns into key findings. Each insight must be linked to at least one theme.
+        </p>
         {isEditor && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setShowAiPanel(v => !v); setAdding(false) }}
-              className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium hover:bg-purple-100"
-            >
-              ✨ Generate with AI
-            </button>
+          <div className="flex gap-2 mt-3">
             <button
               onClick={() => { setAdding(v => !v); setShowAiPanel(false) }}
               className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
             >
               + Add insight
+            </button>
+            <button
+              onClick={() => { setShowAiPanel(v => !v); setAdding(false) }}
+              className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium hover:bg-purple-100"
+            >
+              ✨ Ask Tracey to draft insights
             </button>
           </div>
         )}
@@ -128,9 +149,9 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       {/* AI generation panel */}
       {showAiPanel && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-5">
-          <h3 className="text-sm font-semibold text-purple-800 mb-1">Generate insights with AI</h3>
+          <h3 className="text-sm font-semibold text-purple-800 mb-1">Ask Tracey to draft insights</h3>
           <p className="text-xs text-purple-600 mb-0.5">
-            Pick themes → AI drafts 3 insights using the structured format:
+            Pick themes → Tracey drafts 3 insights using the structured format:
           </p>
           <p className="text-xs text-purple-500 italic mb-4">
             When [context], [participants] [behaviour], because [underlying cause], which leads to [impact].
@@ -161,7 +182,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
               disabled={aiLoading || selectedThemeIds.length === 0}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40"
             >
-              {aiLoading ? 'Generating...' : `Generate from ${selectedThemeIds.length} theme${selectedThemeIds.length !== 1 ? 's' : ''}`}
+              {aiLoading ? 'Tracey is thinking...' : `Ask Tracey to generate from ${selectedThemeIds.length} theme${selectedThemeIds.length !== 1 ? 's' : ''}`}
             </button>
             <button
               onClick={closeAiPanel}
@@ -173,7 +194,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
           {aiDrafts.length > 0 && (
             <div className="space-y-3 border-t border-purple-200 pt-4">
               <p className="text-xs font-semibold text-purple-700">
-                {aiDrafts.length} insight{aiDrafts.length !== 1 ? 's' : ''} generated — review and add:
+                Tracey drafted {aiDrafts.length} insight{aiDrafts.length !== 1 ? 's' : ''} — review and add:
               </p>
               {aiDrafts.map((draft, i) => (
                 <div key={i} className="bg-white border border-purple-200 rounded-lg p-4">
@@ -181,12 +202,19 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
                   {addedIndices.has(i) ? (
                     <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
                   ) : (
-                    <button
-                      onClick={() => addDraftInsight(draft, i)}
-                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                    >
-                      + Add insight
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => addDraftInsight(draft, i)}
+                        className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                      >
+                        + Add insight
+                      </button>
+                      {selectedThemeIds.length > 0 && (
+                        <span className="text-xs text-purple-500">
+                          Themes will be linked automatically
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -209,6 +237,30 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
+          {themes.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Link to themes</label>
+              <div className="flex flex-wrap gap-2">
+                {themes.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setNewInsightThemeIds(prev =>
+                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                    )}
+                    className={[
+                      'px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
+                      newInsightThemeIds.includes(t.id)
+                        ? 'bg-purple-600 text-white border-purple-600'
+                        : 'bg-white text-purple-700 border-purple-200 hover:border-purple-400',
+                    ].join(' ')}
+                  >
+                    {t.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               type="submit"
@@ -219,7 +271,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent('') }}
+              onClick={() => { setAdding(false); setContent(''); setNewInsightThemeIds([]) }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel

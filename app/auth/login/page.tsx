@@ -1,11 +1,11 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 type Mode = 'guest' | 'email'
 
-export default function LoginPage() {
+function LoginForm() {
   const [mode, setMode] = useState<Mode>('guest')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -168,5 +168,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

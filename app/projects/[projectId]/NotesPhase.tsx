@@ -71,17 +71,15 @@ export default function NotesPhase({ projectId, notes, interviews, isEditor, onR
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-semibold">Notes</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Capture observations and quotes. Need at least 10 notes, all linked to an interview.
-          </p>
-        </div>
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold">Notes</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Capture observations and quotes. Need at least 10 notes, all linked to an interview.
+        </p>
         {isEditor && (
           <button
-            onClick={() => setAdding(true)}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            onClick={() => { setAdding(true); setInterviewId(interviews[interviews.length - 1]?.id || '') }}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 mt-3"
           >
             + Add note
           </button>
