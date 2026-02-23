@@ -5,11 +5,13 @@ import type { Phase } from '@/lib/types'
 
 interface Props {
   currentPhase: Phase
-  viewingPhase: Phase
+  viewingPhase: Phase | 'report'
   onPhaseClick: (phase: Phase) => void
+  showReport?: boolean
+  onReportClick?: () => void
 }
 
-export default function PhaseNavBar({ currentPhase, viewingPhase, onPhaseClick }: Props) {
+export default function PhaseNavBar({ currentPhase, viewingPhase, onPhaseClick, showReport, onReportClick }: Props) {
   return (
     <nav className="bg-white border-b border-gray-200">
       <div className="max-w-6xl mx-auto px-4">
@@ -48,6 +50,20 @@ export default function PhaseNavBar({ currentPhase, viewingPhase, onPhaseClick }
               </button>
             )
           })}
+          {showReport && (
+            <>
+              <span className="flex items-center text-gray-200 px-1">›</span>
+              <button
+                onClick={onReportClick}
+                className={[
+                  'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors',
+                  viewingPhase === 'report' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-800',
+                ].join(' ')}
+              >
+                Research Summary
+              </button>
+            </>
+          )}
         </div>
       </div>
     </nav>

@@ -13,6 +13,7 @@ import NotesPhase from './NotesPhase'
 import ThemesPhase from './ThemesPhase'
 import InsightsPhase from './InsightsPhase'
 import RecommendationsPhase from './RecommendationsPhase'
+import ReportView from './ReportView'
 
 interface Props {
   projectId: string
@@ -22,7 +23,7 @@ interface Props {
 export default function ProjectView({ projectId, currentUser }: Props) {
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [viewingPhase, setViewingPhase] = useState<Phase | null>(null)
+  const [viewingPhase, setViewingPhase] = useState<Phase | 'report' | null>(null)
   const [advancing, setAdvancing] = useState(false)
   const [advanceError, setAdvanceError] = useState<string[]>([])
   const [showMembersModal, setShowMembersModal] = useState(false)
@@ -49,8 +50,8 @@ export default function ProjectView({ projectId, currentUser }: Props) {
   // Initialise viewing phase from project on first load
   useEffect(() => {
     if (project && viewingPhase === null) {
-      const phase = project.current_phase === 'complete' ? 'recommendations' : project.current_phase
-      setViewingPhase(phase as Phase)
+      const phase = project.current_phase === 'complete' ? 'report' : project.current_phase
+      setViewingPhase(phase as Phase | 'report')
     }
   }, [project, viewingPhase])
 
@@ -143,8 +144,10 @@ export default function ProjectView({ projectId, currentUser }: Props) {
       {/* Phase nav */}
       <PhaseNavBar
         currentPhase={currentPhase}
-        viewingPhase={viewingPhase}
+        viewingPhase={viewingPhase ?? currentPhase}
         onPhaseClick={setViewingPhase}
+        showReport={isComplete}
+        onReportClick={() => setViewingPhase('report')}
       />
 
       {/* Advance section */}
@@ -185,13 +188,19 @@ export default function ProjectView({ projectId, currentUser }: Props) {
         </div>
       )}
 
-      {/* Completion banner */}
-      {isComplete && (
+      {/* Completion banner — shown on non-report phases when complete */}
+      {isComplete && viewingPhase !== 'report' && (
         <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3">
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <p className="text-sm text-emerald-700 font-medium">
-              🎉 Synthesis complete — all phases finished.
+              Synthesis complete — all phases finished.
             </p>
+            <button
+              onClick={() => setViewingPhase('report')}
+              className="text-sm text-emerald-700 font-medium underline hover:no-underline flex-shrink-0"
+            >
+              View Research Summary →
+            </button>
           </div>
         </div>
       )}
@@ -242,6 +251,13 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             insights={project.insights}
             themes={project.themes}
             notes={project.notes}
+            isEditor={isEditor}
+            onRefresh={fetchProject}
+          />
+        )}
+        {viewingPhase === 'report' && (
+          <ReportView
+            project={project}
             isEditor={isEditor}
             onRefresh={fetchProject}
           />

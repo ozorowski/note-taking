@@ -78,6 +78,8 @@ export interface Project {
   current_phase: Phase
   owner_id: string
   demo: boolean
+  executive_summary?: string | null
+  executive_summary_generated_at?: string | null
   created_at: Date
   updated_at: Date
 }

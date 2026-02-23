@@ -72,7 +72,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(projectId, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { title, description } = await request.json()
+  const { title, description, executive_summary } = await request.json()
+
+  if (executive_summary !== undefined) {
+    const result = await query(
+      `UPDATE projects SET executive_summary = $1, executive_summary_generated_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [executive_summary, projectId]
+    )
+    return NextResponse.json(result.rows[0])
+  }
+
   const result = await query(
     `UPDATE projects SET title = COALESCE($1, title), description = COALESCE($2, description), updated_at = NOW() WHERE id = $3 RETURNING *`,
     [title?.trim() || null, description !== undefined ? description?.trim() ?? null : null, projectId]
