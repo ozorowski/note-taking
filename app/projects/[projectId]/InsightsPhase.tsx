@@ -21,6 +21,12 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<InsightWithIds | null>(null)
 
+  // AI generation state
+  const [showAiPanel, setShowAiPanel] = useState(false)
+  const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiDraft, setAiDraft] = useState('')
+
   async function addInsight(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim()) return
@@ -44,10 +50,36 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
     onRefresh()
   }
 
-  // When drawer calls onRefresh, update the selected entity from the refreshed list
   function handleDrawerRefresh() {
     setSelected(null)
     onRefresh()
+  }
+
+  function toggleTheme(themeId: string) {
+    setSelectedThemeIds(prev =>
+      prev.includes(themeId) ? prev.filter(id => id !== themeId) : [...prev, themeId]
+    )
+  }
+
+  async function generateDraft() {
+    if (selectedThemeIds.length === 0) return
+    setAiLoading(true)
+    setAiDraft('')
+    const res = await fetch('/api/ai/draft-insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, theme_ids: selectedThemeIds }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setAiDraft(data.draft || data.content || '')
+      // Pre-fill the manual add form with the draft
+      setContent(data.draft || data.content || '')
+      setAdding(true)
+    }
+    setAiLoading(false)
+    setShowAiPanel(false)
+    setSelectedThemeIds([])
   }
 
   return (
@@ -60,19 +92,78 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
           </p>
         </div>
         {isEditor && (
-          <button
-            onClick={() => setAdding(true)}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-          >
-            + Add insight
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowAiPanel(v => !v); setAdding(false) }}
+              className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium hover:bg-purple-100"
+            >
+              ✨ Generate with AI
+            </button>
+            <button
+              onClick={() => { setAdding(v => !v); setShowAiPanel(false) }}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            >
+              + Add insight
+            </button>
+          </div>
         )}
       </div>
 
+      {/* AI generation panel */}
+      {showAiPanel && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-5">
+          <h3 className="text-sm font-semibold text-purple-800 mb-1">Generate insight with AI</h3>
+          <p className="text-xs text-purple-600 mb-4">
+            Pick the themes you want to draw from — AI will draft an insight based on the notes in those themes.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {themes.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => toggleTheme(t.id)}
+                className={[
+                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                  selectedThemeIds.includes(t.id)
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-white text-purple-700 border-purple-200 hover:border-purple-400',
+                ].join(' ')}
+              >
+                {t.title}
+              </button>
+            ))}
+            {themes.length === 0 && (
+              <p className="text-xs text-purple-500">No themes yet — go back to the Themes phase first.</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={generateDraft}
+              disabled={aiLoading || selectedThemeIds.length === 0}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40"
+            >
+              {aiLoading ? 'Generating...' : `Generate from ${selectedThemeIds.length} theme${selectedThemeIds.length !== 1 ? 's' : ''}`}
+            </button>
+            <button
+              onClick={() => { setShowAiPanel(false); setSelectedThemeIds([]) }}
+              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manual add form */}
       {adding && (
         <form onSubmit={addInsight} className="bg-white border border-gray-200 rounded-xl p-5 mb-5 space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Insight</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Insight
+              {aiDraft && content === aiDraft && (
+                <span className="ml-2 text-xs text-purple-500 font-normal">✨ AI draft — edit before saving</span>
+              )}
+            </label>
             <textarea
               autoFocus
               value={content}
@@ -92,7 +183,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent('') }}
+              onClick={() => { setAdding(false); setContent(''); setAiDraft('') }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel
@@ -132,10 +223,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
                 {linkedThemes.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {linkedThemes.map(t => (
-                      <span
-                        key={t.id}
-                        className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full"
-                      >
+                      <span key={t.id} className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
                         {t.title}
                       </span>
                     ))}

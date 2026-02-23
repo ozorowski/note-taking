@@ -17,6 +17,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   const [addingTheme, setAddingTheme] = useState(false)
   const [themeTitle, setThemeTitle] = useState('')
   const [dragNoteId, setDragNoteId] = useState<string | null>(null)
+  const [dragSourceThemeId, setDragSourceThemeId] = useState<string | null>(null)
   const [dragOverThemeId, setDragOverThemeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -24,7 +25,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   const ungrouped = notes.filter(n => !n.theme_ids || n.theme_ids.length === 0)
 
   function notesForTheme(themeId: string): Note[] {
-    return notes.filter(n => n.theme_ids?.includes(themeId))
+    return notes.filter(n => n.theme_ids?.includes(themeId)).reverse()
   }
 
   async function createTheme(e: React.FormEvent) {
@@ -55,6 +56,16 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
 
   async function detachNote(themeId: string, noteId: string) {
     await fetch(`/api/themes/${themeId}/notes?noteId=${noteId}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  async function moveNote(fromThemeId: string, toThemeId: string, noteId: string) {
+    await fetch(`/api/themes/${fromThemeId}/notes?noteId=${noteId}`, { method: 'DELETE' })
+    await fetch(`/api/themes/${toThemeId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note_id: noteId }),
+    })
     onRefresh()
   }
 
@@ -107,8 +118,8 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                 <div
                   key={note.id}
                   draggable={isEditor}
-                  onDragStart={() => { setDragNoteId(note.id) }}
-                  onDragEnd={() => { setDragNoteId(null); setDragOverThemeId(null) }}
+                  onDragStart={() => { setDragNoteId(note.id); setDragSourceThemeId(null) }}
+                  onDragEnd={() => { setDragNoteId(null); setDragSourceThemeId(null); setDragOverThemeId(null) }}
                   className={[
                     'bg-white border border-gray-200 rounded-lg p-3 text-xs text-gray-700 leading-relaxed select-none',
                     isEditor ? 'cursor-grab active:cursor-grabbing' : '',
@@ -180,9 +191,14 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                     onDragOver={e => { e.preventDefault(); setDragOverThemeId(theme.id) }}
                     onDragLeave={() => setDragOverThemeId(null)}
                     onDrop={() => {
-                      if (dragNoteId && isEditor) {
-                        attachNote(theme.id, dragNoteId)
+                      if (dragNoteId && isEditor && dragOverThemeId !== dragSourceThemeId) {
+                        if (dragSourceThemeId) {
+                          moveNote(dragSourceThemeId, theme.id, dragNoteId)
+                        } else {
+                          attachNote(theme.id, dragNoteId)
+                        }
                         setDragNoteId(null)
+                        setDragSourceThemeId(null)
                         setDragOverThemeId(null)
                       }
                     }}
@@ -204,7 +220,18 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                       {themeNotes.map(note => (
                         <div
                           key={note.id}
-                          className="bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-xs text-gray-700 group relative"
+                          draggable={isEditor}
+                          onDragStart={e => {
+                            e.stopPropagation()
+                            setDragNoteId(note.id)
+                            setDragSourceThemeId(theme.id)
+                          }}
+                          onDragEnd={() => { setDragNoteId(null); setDragSourceThemeId(null); setDragOverThemeId(null) }}
+                          className={[
+                            'bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-xs text-gray-700 group relative',
+                            isEditor ? 'cursor-grab active:cursor-grabbing' : '',
+                            dragNoteId === note.id ? 'opacity-40' : '',
+                          ].join(' ')}
                         >
                           <p className="leading-relaxed pr-4">{note.content}</p>
                           {note.interview_name && (
