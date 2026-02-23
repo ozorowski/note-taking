@@ -20,6 +20,8 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   const [dragSourceThemeId, setDragSourceThemeId] = useState<string | null>(null)
   const [dragOverThemeId, setDragOverThemeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [aiClustering, setAiClustering] = useState(false)
+  const [aiError, setAiError] = useState('')
 
   const clusterPct = getClusteringProgress(counts)
   const ungrouped = notes.filter(n => !n.theme_ids || n.theme_ids.length === 0)
@@ -75,6 +77,23 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
     onRefresh()
   }
 
+  async function clusterWithAI() {
+    setAiClustering(true)
+    setAiError('')
+    const res = await fetch('/api/ai/cluster-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId }),
+    })
+    if (res.ok) {
+      onRefresh()
+    } else {
+      const data = await res.json()
+      setAiError(data.error || 'Clustering failed — try again')
+    }
+    setAiClustering(false)
+  }
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 140px)' }}>
       {/* Progress bar + controls */}
@@ -96,12 +115,24 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
             </div>
           </div>
           {isEditor && (
-            <button
-              onClick={() => setAddingTheme(true)}
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex-shrink-0"
-            >
-              + Add theme
-            </button>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={clusterWithAI}
+                disabled={aiClustering}
+                className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium hover:bg-purple-100 disabled:opacity-50"
+              >
+                {aiClustering ? 'Clustering…' : '✨ Cluster with AI'}
+              </button>
+              <button
+                onClick={() => setAddingTheme(true)}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+              >
+                + Add theme
+              </button>
+            </div>
+          )}
+          {aiError && (
+            <p className="text-xs text-red-500 mt-1">{aiError}</p>
           )}
         </div>
       </div>

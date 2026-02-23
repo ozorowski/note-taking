@@ -17,10 +17,10 @@ export async function createDemoProject(userId: string): Promise<{ id: string }>
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
         'Research Synthesis — Demo',
-        '5 interviews, 42 notes, 7 themes — all ready. Use AI to generate insights and build recommendations live.',
+        '5 interviews, 42 notes ready to cluster. Use "Cluster with AI" to group notes into themes, then generate insights.',
         userId,
         true,
-        'insights',
+        'themes',
       ]
     )
     const project = projResult.rows[0]
@@ -127,51 +127,13 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
     { content: '"I want AI to flag when an insight isn\'t backed by enough evidence, not just draft it."', i: 4 },
   ]
 
-  const noteIds: string[] = []
   for (const n of notesData) {
-    const r = await client.query(
-      `INSERT INTO notes (project_id, interview_id, content, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
+    await client.query(
+      `INSERT INTO notes (project_id, interview_id, content, created_by) VALUES ($1,$2,$3,$4)`,
       [projectId, interviewIds[n.i], n.content, userId]
     )
-    noteIds.push(r.rows[0].id)
   }
-
-  // ── 7 themes ──────────────────────────────────────────────────────────────
-  const themesData = [
-    { title: 'Tool fragmentation',      desc: 'Researchers use many disconnected tools; switching cost is high and data is scattered.' },
-    { title: 'Evidence traceability',   desc: 'No clear, navigable link from recommendations back to source quotes.' },
-    { title: 'Process inconsistency',   desc: 'No shared synthesis methodology — every researcher reinvents the wheel.' },
-    { title: 'Collaboration & handoff', desc: 'Hard to work on synthesis together or transfer context without losing fidelity.' },
-    { title: 'Synthesis bottleneck',    desc: 'The step from raw notes to actionable insights is the slowest, highest-effort phase.' },
-    { title: 'AI as a co-pilot',        desc: 'Strong appetite for AI drafts and suggestions, with researcher retaining final judgment.' },
-    { title: 'Stakeholder credibility', desc: 'Recommendations lack perceived rigour because evidence chains are invisible.' },
-  ]
-
-  const themeIds: string[] = []
-  for (const t of themesData) {
-    const r = await client.query(
-      `INSERT INTO themes (project_id, title, description, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [projectId, t.title, t.desc, userId]
-    )
-    themeIds.push(r.rows[0].id)
-  }
-
-  // ── Cluster all 42 notes into themes ─────────────────────────────────────
-  // [noteIndex, themeIndex]  (0=Tool frag, 1=Traceability, 2=Process, 3=Collab, 4=Bottleneck, 5=AI, 6=Credibility)
-  const noteMappings: [number, number][] = [
-    [0,0],[1,0],[2,3],[3,0],[4,0],[5,1],[6,4],[7,0],[8,4],
-    [9,1],[10,2],[11,6],[12,0],[13,2],[14,3],[15,5],[16,1],[17,4],[18,2],[19,4],
-    [20,4],[21,4],[22,0],[23,4],[24,2],[25,2],[26,4],[27,4],
-    [28,2],[29,4],[30,6],[31,2],[32,0],[33,5],[34,2],
-    [35,2],[36,2],[37,2],[38,3],[39,0],[40,3],[41,5],
-  ]
-
-  for (const [nIdx, tIdx] of noteMappings) {
-    await client.query(
-      `INSERT INTO note_themes (note_id, theme_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [noteIds[nIdx], themeIds[tIdx]]
-    )
-  }
-  // Insights and recommendations are intentionally left empty —
-  // the demo starts here so you can show AI generation live.
+  // Themes, insights, and recommendations are intentionally left empty —
+  // the demo starts at the Themes phase so you can show AI clustering,
+  // then AI insight generation, live.
 }
