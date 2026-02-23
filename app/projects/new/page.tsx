@@ -89,11 +89,11 @@ export default function NewProjectPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Research objectives <span className="text-gray-400 font-normal">(optional)</span></label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="What's this project about?"
+              placeholder="e.g. Understand how users discover and order food on mobile"
               rows={2}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
@@ -101,7 +101,7 @@ export default function NewProjectPage() {
 
           {mode === 'demo' && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
-              Starts at the Themes phase with 3 interviews, 30 notes, and 5 partially-clustered themes ready to explore.
+              Deliveroo usability study — 5 participants, 40 notes. Starts at the Themes phase ready for AI clustering, then insight and recommendation generation.
             </div>
           )}
 

@@ -4,8 +4,9 @@ import { getClient } from './db'
  * Creates a demo project for the given user and returns it.
  * Called automatically on every login so the demo is always fresh.
  *
- * State: 5 interviews, 42 notes, 7 themes (all clustered) — ready at the
- * Insights phase with no insights yet, so you can demo AI generation live.
+ * Scenario: Deliveroo usability study — 5 participants, 40 notes.
+ * Starts at the Themes phase with no themes seeded, ready to demo
+ * AI clustering, then AI insight and recommendation generation live.
  */
 export async function createDemoProject(userId: string): Promise<{ id: string }> {
   const client = await getClient()
@@ -16,8 +17,8 @@ export async function createDemoProject(userId: string): Promise<{ id: string }>
       `INSERT INTO projects (title, description, owner_id, demo, current_phase)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
-        'Research Synthesis — Demo',
-        '5 interviews, 42 notes ready to cluster. Use "Cluster with AI" to group notes into themes, then generate insights.',
+        'Deliveroo App — Usability Study',
+        'Evaluate the end-to-end ordering experience on the Deliveroo app, from restaurant discovery to order completion, with a focus on task success and user confidence.',
         userId,
         true,
         'themes',
@@ -43,27 +44,27 @@ export async function createDemoProject(userId: string): Promise<{ id: string }>
 }
 
 async function seedDemoData(client: any, projectId: string, userId: string) {
-  // ── 5 interviews ──────────────────────────────────────────────────────────
+  // ── 5 participants ─────────────────────────────────────────────────────────
   const interviews = [
     {
-      name: 'Alex Chen',
-      notes: 'Senior UX researcher, 6 years exp. Works in a team of 4. Uses Miro + Notion + Google Docs in every project. "I always end up re-doing analysis I\'ve already done because I can\'t find the original." Spends ~3 days on synthesis per project.',
+      name: 'Emma Thompson',
+      notes: 'Age 27, marketing manager, orders Deliveroo 3–4x per week. Primarily uses iPhone. Very comfortable with technology. Main use case: solo weeknight dinners and occasional team lunches. Has been using Deliveroo for 3 years.',
     },
     {
-      name: 'Priya Sharma',
-      notes: 'Research lead managing 3 junior researchers. Frustrated by lack of evidence trails. "When a stakeholder challenges a recommendation I can\'t show them exactly where it came from — it erodes trust." Wants a consistent team process.',
+      name: 'James Wilson',
+      notes: 'Age 38, parent of two, orders for family meals 1–2x per week. Uses Android. Moderate tech confidence. Often ordering for multiple people with different dietary requirements. Compares Deliveroo against Uber Eats regularly.',
     },
     {
-      name: 'Tom Nguyen',
-      notes: 'Junior researcher, 1 year in role. Overwhelmed by synthesis phase. "I copy-paste between Miro, Notion, and Docs constantly. It feels like admin, not research." Uncertain whether his insights are good quality.',
+      name: 'Sofia Martinez',
+      notes: 'Age 24, food blogger and enthusiast. Orders 5+ times per week across multiple platforms. Power user — explores new cuisines, writes reviews. Uses Deliveroo Plus subscription. Very opinionated about the discovery experience.',
     },
     {
-      name: 'Sara Kim',
-      notes: 'Product designer who runs lightweight research. Does 5–10 interviews per quarter. "I don\'t have a researcher\'s training so synthesis feels like guesswork. I just write what felt important." Worried recommendations seem subjective.',
+      name: 'David Okafor',
+      notes: 'Age 45, consultant. Orders for work lunches 2–3x per week, sometimes for client meetings. Values speed and reliability above all. Has had multiple bad experiences with incorrect orders. Uses saved addresses and payment methods heavily.',
     },
     {
-      name: 'Marcus Rodriguez',
-      notes: 'Research ops manager. Trying to standardise process across 8 researchers. "Every researcher has their own way of doing synthesis. We can\'t compare studies or build institutional knowledge." Wants templates and guardrails.',
+      name: 'Lily Chen',
+      notes: 'Age 21, university student. New Deliveroo user — only been using for 2 months. Budget-conscious, uses promo codes frequently. Often orders with flatmates and splits bills. Finds the app occasionally confusing.',
     },
   ]
 
@@ -76,55 +77,57 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
     interviewIds.push(r.rows[0].id)
   }
 
-  // ── 42 notes spread across all 5 interviews ───────────────────────────────
+  // ── 40 notes spread across 5 participants ──────────────────────────────────
   const notesData = [
-    // Alex Chen (i=0)
-    { content: '"I never know where the latest version of the synthesis doc is — there are always 3 copies."', i: 0 },
-    { content: '"We use Miro for clustering but the sticky notes just float around with no structure after the session."', i: 0 },
-    { content: '"When I join a project mid-way, there\'s no way to get up to speed quickly."', i: 0 },
-    { content: 'Observed: had 5 browser tabs open — Miro, Notion, two Google Docs, and Slack — all for the same project.', i: 0 },
-    { content: '"I duplicate my Notion template at the start of every project. Setup alone takes 30 minutes."', i: 0 },
-    { content: '"Sometimes I forget which quote came from which participant because we strip names out early."', i: 0 },
-    { content: '"The hardest part is the leap from themes to insights — it feels arbitrary when I do it."', i: 0 },
-    { content: 'Observed: spent 20 minutes searching Slack for a note a colleague had shared two weeks earlier.', i: 0 },
-    { content: '"We rarely get to write recommendations because synthesis takes so long the project moves on."', i: 0 },
-    // Priya Sharma (i=1)
-    { content: '"We have no audit trail at all. Stakeholders ask where insights come from and I can\'t show them."', i: 1 },
-    { content: '"I can\'t give junior researchers a clear process to follow. Everyone does synthesis differently."', i: 1 },
-    { content: '"Our recommendations get challenged in presentations because they look like opinions, not evidence."', i: 1 },
-    { content: '"I copy quotes into one doc, themes into another, then insights into a slide deck. It\'s four separate artefacts."', i: 1 },
-    { content: 'Observed: team used a shared spreadsheet to track themes — it had 3 versions with conflicting content.', i: 1 },
-    { content: '"When I hand off to another researcher mid-project, context is always lost. They start over."', i: 1 },
-    { content: '"If AI could name or describe themes based on the notes inside them, that alone would save hours."', i: 1 },
-    { content: '"I want to show a stakeholder the exact participant quote that backs up a recommendation."', i: 1 },
-    { content: '"The gap between raw notes and actionable insights is where quality falls apart."', i: 1 },
-    { content: '"We don\'t have shared definitions for what a theme is versus an insight versus a recommendation."', i: 1 },
-    { content: '"I\'ve started skipping the themes phase to save time, but the insights are noticeably weaker."', i: 1 },
-    // Tom Nguyen (i=2)
-    { content: '"Synthesis takes me 2–3 days and I\'m still not confident the output is right."', i: 2 },
-    { content: '"I got feedback that my insights were too vague. I didn\'t know how to make them more concrete."', i: 2 },
-    { content: 'Observed: drag-and-drop in current tool (Miro) was laggy on large boards; gave up and used text lists instead.', i: 2 },
-    { content: '"I spend more time formatting docs than actually thinking about the research."', i: 2 },
-    { content: '"I\'d love a tool that imposes a consistent process so I know I\'m not missing anything."', i: 2 },
-    { content: '"When we ran a follow-up study, we couldn\'t easily compare it to the first round."', i: 2 },
-    { content: '"The biggest problem is going from a pile of sticky notes to something I can present to stakeholders."', i: 2 },
-    { content: '"I\'m always worried I\'m overlooking something important buried in the data."', i: 2 },
-    // Sara Kim (i=3)
-    { content: '"I don\'t know the right way to group notes. I end up with either one huge theme or twenty tiny ones."', i: 3 },
-    { content: '"I present findings as bullet points because I don\'t know how to write a proper insight."', i: 3 },
-    { content: '"When my recommendations get pushed back I can\'t defend them because I can\'t retrace my logic."', i: 3 },
-    { content: '"I wish there was a checklist or progress indicator telling me if my synthesis is complete enough."', i: 3 },
-    { content: 'Observed: synthesis notes stored in 3 different tools with no cross-references between them.', i: 3 },
-    { content: '"I\'d use AI drafts as a starting point, but I\'d want to review and rewrite them myself."', i: 3 },
-    { content: '"It would help to see an example of a well-structured insight so I know what I\'m aiming for."', i: 3 },
-    // Marcus Rodriguez (i=4)
-    { content: '"Eight researchers, eight different processes. We can\'t build on each other\'s work."', i: 4 },
-    { content: '"I\'ve tried to create a shared template in Notion but nobody uses it consistently."', i: 4 },
-    { content: '"We can\'t benchmark synthesis quality or track whether it improves over time."', i: 4 },
-    { content: '"Onboarding a new researcher takes months partly because there\'s no documented synthesis workflow."', i: 4 },
-    { content: '"The tools researchers use are chosen individually — we have no standardised stack."', i: 4 },
-    { content: '"If a researcher leaves, all their synthesis context walks out the door with them."', i: 4 },
-    { content: '"I want AI to flag when an insight isn\'t backed by enough evidence, not just draft it."', i: 4 },
+    // Emma Thompson (i=0) — 8 notes
+    { content: '"I just type what I fancy into search — but the results feel random. Sometimes a pizza place comes up when I search for sushi."', i: 0 },
+    { content: '"The filters are buried. I always forget where they are and end up scrolling past places I can\'t eat at."', i: 0 },
+    { content: 'Observed: Emma tapped the search bar, typed "Thai", scrolled past 6 sponsored results before finding an organic one. Said "these sponsored ones are annoying."', i: 0 },
+    { content: '"I wish I could save filter presets — I always want the same things: under 30 min, no minimum order, 4 stars or above."', i: 0 },
+    { content: '"Reordering is the feature I use most. But sometimes it fails silently — I don\'t realise an item is unavailable until checkout."', i: 0 },
+    { content: 'Observed: Emma tried to customise a burger — she missed the "required" modifier step and the app blocked her at checkout without a clear error message. Took 90 seconds to find and fix it.', i: 0 },
+    { content: '"The ETA shown on the restaurant page is never what I actually get. I\'ve stopped trusting it — I just assume add 15 minutes."', i: 0 },
+    { content: '"I love the live tracking map but it disappears sometimes. Once it just said \'your order is on its way\' for 40 minutes with no map."', i: 0 },
+
+    // James Wilson (i=1) — 8 notes
+    { content: '"Ordering for a family is a nightmare. There\'s no way to organise the basket by person. I have to scroll up and down constantly to check what I\'ve added."', i: 1 },
+    { content: '"The dietary filter options are too basic — there\'s no \'nut-free\' option and my daughter has a nut allergy. I have to read every item description manually."', i: 1 },
+    { content: 'Observed: James spent 4 minutes searching for allergen information on a dish. Eventually found a small "contains" list in grey text at the bottom of the item description. "This should be front and centre."', i: 1 },
+    { content: '"When I add a note to the order like \'no onions\', I have no idea if the restaurant actually sees it. I\'ve had onions every time."', i: 1 },
+    { content: '"The \'popular items\' section is useful but I always wonder — popular with who? Is it popular in my area? This week? Ever?"', i: 1 },
+    { content: '"I\'ve had three orders where an item went missing and the refund process took over a week. Now I take a photo of the bag when it arrives."', i: 1 },
+    { content: '"Comparing restaurants is hard — I have to open each one, check the menu and prices, go back, open another. There\'s no side-by-side view."', i: 1 },
+    { content: 'Observed: James tried to apply a promo code at checkout — the field was hidden inside an "offers" accordion that he didn\'t notice for 2 minutes. "I nearly missed it."', i: 1 },
+
+    // Sofia Martinez (i=2) — 8 notes
+    { content: '"Discovery is the weakest part of the app. I know what cuisines I want to explore but there\'s no way to browse by ingredient or cooking style — only by cuisine category."', i: 2 },
+    { content: '"The \'new restaurants\' section is great when it appears — but it only shows up sometimes. I don\'t know when it\'ll be there."', i: 2 },
+    { content: '"Restaurant photos on the listing page look amazing, but when you tap into the menu the item photos are tiny thumbnails. There\'s a big drop-off in quality."', i: 2 },
+    { content: 'Observed: Sofia rated a restaurant 3 stars after delivery. The review screen had only a star rating and a generic text box. "I wanted to rate the food and delivery separately — I loved the food but the driver was 45 mins late."', i: 2 },
+    { content: '"I use Deliveroo Plus but I genuinely forget what benefits I have. I never know which restaurants have the free delivery symbol until I\'m already looking at them."', i: 2 },
+    { content: '"The search doesn\'t surface dishes — only restaurants. If I want pad thai I have to know which restaurants serve it. That\'s backwards."', i: 2 },
+    { content: '"Group ordering used to be a feature — I swear I used it once — but I can\'t find it anywhere now. My friends and I have to text each other and I manually combine."', i: 2 },
+    { content: '"When a restaurant is busy and the wait is long, the app should tell me upfront. Instead I add items, get to checkout, and then see a 75-minute wait."', i: 2 },
+
+    // David Okafor (i=3) — 8 notes
+    { content: '"Speed is everything for me at lunchtime. I need to be able to reorder my usual in under 30 seconds. The current flow is about 45 seconds minimum."', i: 3 },
+    { content: '"I have three saved addresses — home, office, and a client site. Switching between them is fine but it doesn\'t remember which one I used last."', i: 3 },
+    { content: 'Observed: David\'s order was marked "delivered" but hadn\'t arrived. He tapped "help" — the chat bot couldn\'t find his order by reference number. He gave up and called the restaurant directly. "This is unacceptable for a business expense."', i: 3 },
+    { content: '"There\'s no way to schedule orders in advance for client lunches. I have to remember to order at 11:30am exactly. I\'ve missed this window twice."', i: 3 },
+    { content: '"I\'d pay a premium for a \'guaranteed ETA\' option on business orders. I need to tell a client when food will arrive. The current estimate is useless."', i: 3 },
+    { content: '"The expense receipt is a PDF that doesn\'t match our finance system format. My finance team rejects it. I end up manually reformatting every receipt."', i: 3 },
+    { content: 'Observed: David tried to add a tip after delivery — he couldn\'t find the option. "I wanted to tip because the driver was excellent in terrible weather. There should be a way."', i: 3 },
+    { content: '"When a restaurant cancels my order — which has happened three times — I get a notification but no explanation and no auto-reorder suggestion. I have to start from scratch."', i: 3 },
+
+    // Lily Chen (i=4) — 8 notes
+    { content: '"I always look for the promo code box first but sometimes it\'s there and sometimes it isn\'t. I don\'t understand why it disappears."', i: 4 },
+    { content: '"The minimum order amount is confusing — sometimes it shows before I pick a restaurant, sometimes only at checkout. I\'ve abandoned orders because of unexpected minimums."', i: 4 },
+    { content: 'Observed: Lily tried to split a bill with a flatmate using the app. Found no splitting feature. Said "I thought there was one — my friend mentioned it." Ended up using Monzo to settle afterwards.', i: 4 },
+    { content: '"I\'m not sure what the difference between \'estimated\' and \'scheduled\' delivery is. The labels use different words in different places."', i: 4 },
+    { content: '"First time I used the app I accidentally ordered to my home address instead of uni. The address picker defaults to the last one used which wasn\'t what I expected."', i: 4 },
+    { content: '"The app asks me to rate my order every single time. I find it slightly annoying after the 10th time. I\'d prefer to choose when I want to leave a review."', i: 4 },
+    { content: '"When I search for a discount or deal the results mix in full-price restaurants. It\'s hard to tell which ones actually have offers without tapping into each one."', i: 4 },
+    { content: 'Observed: Lily noticed her basket had been cleared after she switched to another app briefly. "I had 5 items in there! Why does it do that?" This happened once before and she had abandoned the order entirely.', i: 4 },
   ]
 
   for (const n of notesData) {
@@ -135,5 +138,5 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
   }
   // Themes, insights, and recommendations are intentionally left empty —
   // the demo starts at the Themes phase so you can show AI clustering,
-  // then AI insight generation, live.
+  // then AI insight and recommendation generation, live.
 }
