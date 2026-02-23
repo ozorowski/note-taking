@@ -22,12 +22,7 @@ export default async function ProjectsPage() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <span className="text-xl font-bold tracking-tight">Trace</span>
-            <Link href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600">
-              Boards (old) →
-            </Link>
-          </div>
+          <span className="text-xl font-bold tracking-tight">Trace</span>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{user.name}</span>
             <LogoutButton />
