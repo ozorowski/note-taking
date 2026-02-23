@@ -69,6 +69,16 @@ export default function RecommendationsPhase({
       body: JSON.stringify({ project_id: projectId, content: aiDraft }),
     })
     if (res.ok) {
+      const rec = await res.json()
+      await Promise.all(
+        selectedInsightIds.map(insightId =>
+          fetch(`/api/recommendations/${rec.id}/insights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ insight_id: insightId }),
+          })
+        )
+      )
       setAiAdded(true)
       onRefresh()
     }
@@ -176,12 +186,19 @@ export default function RecommendationsPhase({
                 {aiAdded ? (
                   <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
                 ) : (
-                  <button
-                    onClick={addDraftRec}
-                    className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                  >
-                    + Add recommendation
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={addDraftRec}
+                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                    >
+                      + Add recommendation
+                    </button>
+                    {selectedInsightIds.length > 0 && (
+                      <span className="text-xs text-purple-500">
+                        Insights will be linked automatically
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
