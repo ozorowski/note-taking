@@ -19,6 +19,23 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
   }
 
+  if (process.env.GROQ_API_KEY) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 800,
+      }),
+    })
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content || ''
+  }
+
   if (process.env.OPENAI_API_KEY) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

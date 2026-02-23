@@ -28,6 +28,32 @@ async function callAI(prompt: string): Promise<{ text: string; error?: string }>
     return { text }
   }
 
+  if (process.env.GROQ_API_KEY) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'You are a senior UX researcher. You must respond with valid JSON only — no markdown, no explanation.' },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 2000,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      console.error('Groq API error:', data)
+      return { text: '', error: `Groq API error: ${data?.error?.message || res.status}` }
+    }
+    const text = data.choices?.[0]?.message?.content || ''
+    if (!text) {
+      console.error('Groq returned no text:', JSON.stringify(data))
+      return { text: '', error: 'Groq returned an empty response — try again' }
+    }
+    return { text }
+  }
+
   if (process.env.OPENAI_API_KEY) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -46,7 +72,7 @@ async function callAI(prompt: string): Promise<{ text: string; error?: string }>
     return { text: data.choices?.[0]?.message?.content || '' }
   }
 
-  return { text: '', error: 'No AI key configured — add GEMINI_API_KEY to your environment' }
+  return { text: '', error: 'No AI key configured — add GEMINI_API_KEY or GROQ_API_KEY to your environment' }
 }
 
 function extractJSON(raw: string) {
