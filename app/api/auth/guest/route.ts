@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { createToken, setAuthCookie } from '@/lib/auth'
+import { createDemoProject } from '@/lib/demo-seed'
 import type { User } from '@/lib/types'
 
 export async function POST(request: NextRequest) {
@@ -20,6 +21,13 @@ export async function POST(request: NextRequest) {
     const user = result.rows[0]
     const token = createToken(user)
     await setAuthCookie(token)
+
+    // Auto-seed a fresh demo project for every session
+    try {
+      await createDemoProject(user.id)
+    } catch (seedErr) {
+      console.error('Demo seeding failed (non-fatal):', seedErr)
+    }
 
     return NextResponse.json(
       { user: { id: user.id, name: user.name } },
