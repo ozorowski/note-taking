@@ -1,8 +1,11 @@
 import { getClient } from './db'
 
 /**
- * Creates a fully-seeded demo project for the given user and returns it.
+ * Creates a demo project for the given user and returns it.
  * Called automatically on every login so the demo is always fresh.
+ *
+ * State: 5 interviews, 42 notes, 7 themes (all clustered) — ready at the
+ * Insights phase with no insights yet, so you can demo AI generation live.
  */
 export async function createDemoProject(userId: string): Promise<{ id: string }> {
   const client = await getClient()
@@ -14,10 +17,10 @@ export async function createDemoProject(userId: string): Promise<{ id: string }>
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
         'Research Synthesis — Demo',
-        'A fully worked example showing the complete Trace workflow: interviews → notes → themes → insights → recommendations.',
+        '5 interviews, 42 notes, 7 themes — all ready. Use AI to generate insights and build recommendations live.',
         userId,
         true,
-        'recommendations',
+        'insights',
       ]
     )
     const project = projResult.rows[0]
@@ -169,92 +172,6 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
       [noteIds[nIdx], themeIds[tIdx]]
     )
   }
-
-  // ── 6 pre-seeded insights in structured format ────────────────────────────
-  const insightsData = [
-    {
-      content: 'When conducting synthesis across a project, researchers switch between 3–5 disconnected tools (Miro, Notion, Docs, Slack), because no single tool covers the full workflow from raw notes to recommendations, which leads to an estimated 40–60% of synthesis time being spent on logistics rather than analysis.',
-      evidence: 'Alex had 5 browser tabs open for the same project. Tom described formatting and setup consuming more time than thinking. Every participant named at least 3 separate tools used in a single project.',
-      themes: [0, 4],
-    },
-    {
-      content: 'When presenting recommendations to stakeholders, researchers cannot trace findings back to specific participant quotes, because synthesis artefacts are stored across multiple disconnected documents without cross-references, which leads to recommendations being challenged as subjective opinion and trust in the research eroding.',
-      evidence: 'Priya reported recommendations being challenged in presentations. Sara said she couldn\'t defend her findings when pushed back. Both described having no audit trail to point to.',
-      themes: [1, 6],
-    },
-    {
-      content: 'When a new researcher joins a team or project, they cannot follow a consistent synthesis methodology, because each researcher has developed a personal workflow in the absence of shared standards, which leads to inconsistent insight quality and the inability to compare findings across studies or researchers.',
-      evidence: 'Marcus manages 8 researchers, all using different approaches. Priya has been unable to provide a replicable process for junior researchers. Tom received vague feedback on his insights with no framework to improve from.',
-      themes: [2, 3],
-    },
-    {
-      content: 'When moving from clustered themes to written insights, researchers experience peak uncertainty and friction, because there is no structured framework or quality bar to guide the transition, which leads to insights that are vague, skipped under time pressure, or not credible enough to drive decisions.',
-      evidence: 'Alex described the themes-to-insights step as "arbitrary." Tom received feedback his insights were too vague and didn\'t know how to fix them. Sara admitted she presents bullet points rather than insights because she\'s unsure what a good insight looks like.',
-      themes: [4, 2],
-    },
-    {
-      content: 'When researchers hit blank-page moments during synthesis, they are open to AI-generated drafts as a starting point, because the cognitive effort of initial framing is high and time-consuming, which leads to a strong preference for an AI co-pilot model where they review and rewrite output rather than accept it wholesale.',
-      evidence: 'Sara explicitly said she would use AI drafts but wants to rewrite them. Marcus wants AI to flag weak evidence rather than just generate text. Priya identified theme-naming as the highest-value AI use case.',
-      themes: [5],
-    },
-    {
-      content: 'When a researcher transitions off a project or leaves the organisation, all synthesis context and reasoning is permanently lost, because the logic behind insights and recommendations is stored in the researcher\'s memory rather than in a structured and navigable artefact, which leads to colleagues restarting synthesis from scratch and the same institutional knowledge being repeatedly rediscovered.',
-      evidence: 'Priya described handoffs routinely causing colleagues to start over. Marcus noted that researcher departures mean context "walks out the door." Alex couldn\'t onboard a new team member without a full verbal re-briefing.',
-      themes: [3, 1],
-    },
-  ]
-
-  const insightIds: string[] = []
-  for (const ins of insightsData) {
-    const r = await client.query(
-      `INSERT INTO insights (project_id, content, evidence_summary, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [projectId, ins.content, ins.evidence, userId]
-    )
-    const insightId = r.rows[0].id
-    insightIds.push(insightId)
-    for (const tIdx of ins.themes) {
-      await client.query(
-        `INSERT INTO insight_themes (insight_id, theme_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-        [insightId, themeIds[tIdx]]
-      )
-    }
-  }
-
-  // ── 4 pre-seeded recommendations ─────────────────────────────────────────
-  const recsData = [
-    {
-      content: 'Design a unified synthesis workspace that keeps interviews, notes, themes, insights, and recommendations in one navigable place — eliminating the need for external docs or slide decks.',
-      rationale: 'Tool fragmentation is the single biggest time sink. Consolidating the workflow removes switching cost and creates the artefact trail that is currently missing.',
-      insights: [0, 1],
-    },
-    {
-      content: 'Introduce mandatory phase gates with clear completion criteria (e.g. ≥70% of notes clustered, each insight linked to ≥1 theme) so researchers can\'t skip steps and know when their synthesis is rigorous enough.',
-      rationale: 'Process inconsistency and the confidence gap at the themes→insights step are rooted in the absence of shared standards. Explicit gates encode best practice without requiring managerial policing.',
-      insights: [2, 3],
-    },
-    {
-      content: 'Offer AI-generated drafts at the insight and recommendation steps that pre-fill a review form, making it fast to accept, edit, or reject — rather than generating text that replaces the researcher\'s voice.',
-      rationale: 'Participants are enthusiastic about AI assistance but protective of ownership. A review-first model matches their mental model and removes the blank-page friction without diminishing analytical rigour.',
-      insights: [4],
-    },
-    {
-      content: 'Build a traceable evidence chain UI that lets any stakeholder click from a recommendation through to the exact participant quotes that support it, and export this chain for presentations.',
-      rationale: 'Stakeholder credibility and knowledge preservation are both solved by the same mechanism: a persistent, inspectable link from recommendation back to evidence. This also makes handoffs recoverable.',
-      insights: [1, 5],
-    },
-  ]
-
-  for (const rec of recsData) {
-    const r = await client.query(
-      `INSERT INTO recommendations (project_id, content, rationale, created_by) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [projectId, rec.content, rec.rationale, userId]
-    )
-    const recId = r.rows[0].id
-    for (const iIdx of rec.insights) {
-      await client.query(
-        `INSERT INTO recommendation_insights (recommendation_id, insight_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-        [recId, insightIds[iIdx]]
-      )
-    }
-  }
+  // Insights and recommendations are intentionally left empty —
+  // the demo starts here so you can show AI generation live.
 }
