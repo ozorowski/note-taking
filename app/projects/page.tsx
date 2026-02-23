@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { query } from '@/lib/db'
 import Link from 'next/link'
 import LogoutButton from '@/components/LogoutButton'
+import DeleteProjectButton from '@/components/DeleteProjectButton'
 import { PHASE_LABELS } from '@/lib/phases'
 import type { Phase } from '@/lib/types'
 
@@ -59,13 +60,16 @@ export default async function ProjectsPage() {
               <Link
                 key={p.id}
                 href={`/projects/${p.id}`}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow"
+                className="group bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="font-semibold text-gray-900 leading-tight">{p.title}</h3>
-                  {p.demo && (
-                    <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full flex-shrink-0">demo</span>
-                  )}
+                  <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                    {p.demo && (
+                      <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">demo</span>
+                    )}
+                    {p.role === 'owner' && <DeleteProjectButton projectId={p.id} />}
+                  </div>
                 </div>
                 {p.description && <p className="text-sm text-gray-500 mb-4 line-clamp-2">{p.description}</p>}
                 <div className="flex items-center justify-between">
