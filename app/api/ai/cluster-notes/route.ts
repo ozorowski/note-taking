@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query, getClient } from '@/lib/db'
 import { getAuthedUser, unauthorized, getProjectRole } from '@/lib/api-helpers'
 
-async function callAI(prompt: string): Promise<string> {
+async function callAI(prompt: string): Promise<{ text: string; error?: string }> {
   if (process.env.GEMINI_API_KEY) {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -16,7 +16,16 @@ async function callAI(prompt: string): Promise<string> {
       }
     )
     const data = await res.json()
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!res.ok) {
+      console.error('Gemini API error:', data)
+      return { text: '', error: `Gemini API error: ${data?.error?.message || res.status}` }
+    }
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!text) {
+      console.error('Gemini returned no text:', JSON.stringify(data))
+      return { text: '', error: 'Gemini returned an empty response — try again' }
+    }
+    return { text }
   }
 
   if (process.env.OPENAI_API_KEY) {
@@ -30,10 +39,14 @@ async function callAI(prompt: string): Promise<string> {
       }),
     })
     const data = await res.json()
-    return data.choices?.[0]?.message?.content || ''
+    if (!res.ok) {
+      console.error('OpenAI API error:', data)
+      return { text: '', error: `OpenAI API error: ${data?.error?.message || res.status}` }
+    }
+    return { text: data.choices?.[0]?.message?.content || '' }
   }
 
-  return ''
+  return { text: '', error: 'No AI key configured — add GEMINI_API_KEY to your environment' }
 }
 
 function extractJSON(raw: string) {
@@ -83,8 +96,12 @@ Rules:
 Notes:
 ${notesList}`
 
-  const raw = await callAI(prompt)
-  if (!raw) return NextResponse.json({ error: 'No AI key configured — add GEMINI_API_KEY to your environment' }, { status: 503 })
+  const aiResult = await callAI(prompt)
+  if (!aiResult.text) {
+    const status = aiResult.error?.includes('No AI key') ? 503 : 502
+    return NextResponse.json({ error: aiResult.error || 'AI returned no response' }, { status })
+  }
+  const raw = aiResult.text
 
   let parsed: { themes: { title: string; description: string; note_indices: number[] }[] }
   try {
