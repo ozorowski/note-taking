@@ -35,8 +35,11 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-3xl font-bold mb-2 text-center">NoteTaking</h1>
-        <p className="text-gray-500 text-center mb-8">Collaborative research notes</p>
+        <h1 className="text-3xl font-bold mb-3 text-center">Trace</h1>
+        <p className="text-sm font-medium text-gray-700 text-center mb-1">Structured research synthesis.</p>
+        <p className="text-sm text-gray-500 text-center mb-8">
+          Work with your team from interviews to recommendations,<br />with full evidence traceability.
+        </p>
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
