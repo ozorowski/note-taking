@@ -4,75 +4,77 @@ import { getAuthedUser, unauthorized, getProjectRole } from '@/lib/api-helpers'
 
 async function callAI(prompt: string): Promise<{ text: string; error?: string }> {
   if (process.env.GEMINI_API_KEY) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 2000 },
-        }),
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 2000 },
+          }),
+        }
+      )
+      const data = await res.json()
+      if (res.ok) {
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        if (text) return { text }
       }
-    )
-    const data = await res.json()
-    if (!res.ok) {
-      console.error('Gemini API error:', data)
-      return { text: '', error: `Gemini API error: ${data?.error?.message || res.status}` }
+      console.error('Gemini failed, trying next provider:', data?.error?.message || res.status)
+    } catch (e) {
+      console.error('Gemini error, trying next provider:', e)
     }
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    if (!text) {
-      console.error('Gemini returned no text:', JSON.stringify(data))
-      return { text: '', error: 'Gemini returned an empty response — try again' }
-    }
-    return { text }
   }
 
   if (process.env.GROQ_API_KEY) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a senior UX researcher. You must respond with valid JSON only — no markdown, no explanation.' },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 2000,
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      console.error('Groq API error:', data)
-      return { text: '', error: `Groq API error: ${data?.error?.message || res.status}` }
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: 'You are a senior UX researcher. You must respond with valid JSON only — no markdown, no explanation.' },
+            { role: 'user', content: prompt },
+          ],
+          max_tokens: 2000,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        const text = data.choices?.[0]?.message?.content || ''
+        if (text) return { text }
+      }
+      console.error('Groq failed:', data?.error?.message || res.status)
+    } catch (e) {
+      console.error('Groq error:', e)
     }
-    const text = data.choices?.[0]?.message?.content || ''
-    if (!text) {
-      console.error('Groq returned no text:', JSON.stringify(data))
-      return { text: '', error: 'Groq returned an empty response — try again' }
-    }
-    return { text }
   }
 
   if (process.env.OPENAI_API_KEY) {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2000,
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      console.error('OpenAI API error:', data)
-      return { text: '', error: `OpenAI API error: ${data?.error?.message || res.status}` }
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2000,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        const text = data.choices?.[0]?.message?.content || ''
+        if (text) return { text }
+      }
+      console.error('OpenAI failed:', data?.error?.message || res.status)
+    } catch (e) {
+      console.error('OpenAI error:', e)
     }
-    return { text: data.choices?.[0]?.message?.content || '' }
   }
 
-  return { text: '', error: 'No AI key configured — add GEMINI_API_KEY or GROQ_API_KEY to your environment' }
+  return { text: '', error: 'No AI key configured — add GROQ_API_KEY to your environment' }
 }
 
 function extractJSON(raw: string) {
