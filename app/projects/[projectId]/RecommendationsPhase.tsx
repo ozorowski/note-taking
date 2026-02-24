@@ -235,22 +235,36 @@ export default function RecommendationsPhase({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Link to insights</label>
               <div className="space-y-1.5">
-                {insights.map(ins => (
-                  <label
-                    key={ins.id}
-                    className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={newRecInsightIds.includes(ins.id)}
-                      onChange={() => setNewRecInsightIds(prev =>
-                        prev.includes(ins.id) ? prev.filter(id => id !== ins.id) : [...prev, ins.id]
-                      )}
-                      className="mt-0.5 flex-shrink-0 accent-green-600"
-                    />
-                    <span className="text-sm text-gray-700 leading-snug">{ins.content}</span>
-                  </label>
-                ))}
+                {insights.map(ins => {
+                  const linkedThemes = themes.filter(t => ins.theme_ids?.includes(t.id))
+                  return (
+                    <label
+                      key={ins.id}
+                      className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newRecInsightIds.includes(ins.id)}
+                        onChange={() => setNewRecInsightIds(prev =>
+                          prev.includes(ins.id) ? prev.filter(id => id !== ins.id) : [...prev, ins.id]
+                        )}
+                        className="mt-0.5 flex-shrink-0 accent-green-600"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 leading-snug">{ins.content}</p>
+                        {linkedThemes.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {linkedThemes.map(t => (
+                              <span key={t.id} className="px-1.5 py-0.5 bg-purple-100 text-purple-600 text-xs rounded-full">
+                                {t.title}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
             </div>
           )}
