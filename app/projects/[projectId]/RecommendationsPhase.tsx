@@ -28,6 +28,7 @@ export default function RecommendationsPhase({
 }: Props) {
   const [adding, setAdding] = useState(false)
   const [content, setContent] = useState('')
+  const [newRecInsightIds, setNewRecInsightIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<RecommendationWithIds | null>(null)
 
@@ -100,12 +101,23 @@ export default function RecommendationsPhase({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, content: content.trim() }),
     })
-    setLoading(false)
     if (res.ok) {
+      const rec = await res.json()
+      await Promise.all(
+        newRecInsightIds.map(insightId =>
+          fetch(`/api/recommendations/${rec.id}/insights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ insight_id: insightId }),
+          })
+        )
+      )
       setContent('')
+      setNewRecInsightIds([])
       setAdding(false)
       onRefresh()
     }
+    setLoading(false)
   }
 
   async function deleteRec(id: string) {
@@ -219,6 +231,30 @@ export default function RecommendationsPhase({
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
+          {insights.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Link to insights</label>
+              <div className="flex flex-wrap gap-2">
+                {insights.map(ins => (
+                  <button
+                    key={ins.id}
+                    type="button"
+                    onClick={() => setNewRecInsightIds(prev =>
+                      prev.includes(ins.id) ? prev.filter(id => id !== ins.id) : [...prev, ins.id]
+                    )}
+                    className={[
+                      'px-3 py-1 rounded-lg text-xs font-medium border transition-colors text-left max-w-xs',
+                      newRecInsightIds.includes(ins.id)
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'bg-white text-green-700 border-green-200 hover:border-green-400',
+                    ].join(' ')}
+                  >
+                    {ins.content.length > 70 ? ins.content.slice(0, 70) + '…' : ins.content}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               type="submit"
@@ -229,7 +265,7 @@ export default function RecommendationsPhase({
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent('') }}
+              onClick={() => { setAdding(false); setContent(''); setNewRecInsightIds([]) }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel
