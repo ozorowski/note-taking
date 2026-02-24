@@ -17,7 +17,9 @@ interface Props {
 
 export default function InsightsPhase({ projectId, insights, themes, notes, isEditor, onRefresh }: Props) {
   const [adding, setAdding] = useState(false)
+  const [formMode, setFormMode] = useState<'structured' | 'freetext'>('structured')
   const [content, setContent] = useState('')
+  const [structured, setStructured] = useState({ context: '', behaviour: '', cause: '', impact: '' })
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<InsightWithIds | null>(null)
 
@@ -32,12 +34,15 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
 
   async function addInsight(e: React.FormEvent) {
     e.preventDefault()
-    if (!content.trim()) return
+    const finalContent = formMode === 'structured'
+      ? `When ${structured.context.trim()}, ${structured.behaviour.trim()}, because ${structured.cause.trim()}, which leads to ${structured.impact.trim()}.`
+      : content.trim()
+    if (!finalContent.trim()) return
     setLoading(true)
     const res = await fetch('/api/insights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, content: content.trim() }),
+      body: JSON.stringify({ project_id: projectId, content: finalContent }),
     })
     if (res.ok) {
       const insight = await res.json()
@@ -51,6 +56,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
         )
       )
       setContent('')
+      setStructured({ context: '', behaviour: '', cause: '', impact: '' })
       setNewInsightThemeIds([])
       setAdding(false)
       onRefresh()
@@ -225,18 +231,94 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
 
       {/* Manual add form */}
       {adding && (
-        <form onSubmit={addInsight} className="bg-white border border-gray-200 rounded-xl p-5 mb-5 space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Insight</label>
-            <textarea
-              autoFocus
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              placeholder="When [context], researchers [behaviour], because [underlying cause], which leads to [impact]."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+        <form onSubmit={addInsight} className="bg-white border border-gray-200 rounded-xl p-5 mb-5 space-y-4">
+
+          {/* Mode toggle */}
+          <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 w-fit">
+            <button
+              type="button"
+              onClick={() => setFormMode('structured')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${formMode === 'structured' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Structured
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormMode('freetext')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${formMode === 'freetext' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Freetext
+            </button>
           </div>
+
+          {formMode === 'structured' ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-400 italic">
+                When [context], [who] [behaviour], because [underlying cause], which leads to [impact].
+              </p>
+              <div className="grid gap-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-gray-400 w-20 flex-shrink-0 text-right">When</span>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={structured.context}
+                    onChange={e => setStructured(s => ({ ...s, context: e.target.value }))}
+                    placeholder="participants are onboarding to a new tool"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-gray-400 w-20 flex-shrink-0 text-right">…</span>
+                  <input
+                    type="text"
+                    value={structured.behaviour}
+                    onChange={e => setStructured(s => ({ ...s, behaviour: e.target.value }))}
+                    placeholder="users skip the setup steps and jump straight in"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-gray-400 w-20 flex-shrink-0 text-right">Because</span>
+                  <input
+                    type="text"
+                    value={structured.cause}
+                    onChange={e => setStructured(s => ({ ...s, cause: e.target.value }))}
+                    placeholder="the setup flow feels long and the value isn't obvious upfront"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-gray-400 w-20 flex-shrink-0 text-right">Leads to</span>
+                  <input
+                    type="text"
+                    value={structured.impact}
+                    onChange={e => setStructured(s => ({ ...s, impact: e.target.value }))}
+                    placeholder="missed configuration and confusion later in the workflow"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              {(structured.context || structured.behaviour || structured.cause || structured.impact) && (
+                <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 leading-relaxed">
+                  <span className="font-medium text-gray-400">Preview: </span>
+                  When {structured.context || '…'}, {structured.behaviour || '…'}, because {structured.cause || '…'}, which leads to {structured.impact || '…'}.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <textarea
+                autoFocus
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                placeholder="When [context], researchers [behaviour], because [underlying cause], which leads to [impact]."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+          )}
+
           {themes.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Link to themes</label>
@@ -261,17 +343,20 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
               </div>
             </div>
           )}
+
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (formMode === 'structured'
+                ? !structured.context.trim() || !structured.behaviour.trim() || !structured.cause.trim() || !structured.impact.trim()
+                : !content.trim())}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? 'Adding...' : 'Add insight'}
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent(''); setNewInsightThemeIds([]) }}
+              onClick={() => { setAdding(false); setContent(''); setStructured({ context: '', behaviour: '', cause: '', impact: '' }); setNewInsightThemeIds([]) }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel
