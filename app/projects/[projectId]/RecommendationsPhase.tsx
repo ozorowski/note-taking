@@ -234,23 +234,22 @@ export default function RecommendationsPhase({
           {insights.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Link to insights</label>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5">
                 {insights.map(ins => (
-                  <button
+                  <label
                     key={ins.id}
-                    type="button"
-                    onClick={() => setNewRecInsightIds(prev =>
-                      prev.includes(ins.id) ? prev.filter(id => id !== ins.id) : [...prev, ins.id]
-                    )}
-                    className={[
-                      'px-3 py-1 rounded-lg text-xs font-medium border transition-colors text-left max-w-xs',
-                      newRecInsightIds.includes(ins.id)
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-white text-green-700 border-green-200 hover:border-green-400',
-                    ].join(' ')}
+                    className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    {ins.content.length > 70 ? ins.content.slice(0, 70) + '…' : ins.content}
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={newRecInsightIds.includes(ins.id)}
+                      onChange={() => setNewRecInsightIds(prev =>
+                        prev.includes(ins.id) ? prev.filter(id => id !== ins.id) : [...prev, ins.id]
+                      )}
+                      className="mt-0.5 flex-shrink-0 accent-green-600"
+                    />
+                    <span className="text-sm text-gray-700 leading-snug">{ins.content}</span>
+                  </label>
                 ))}
               </div>
             </div>
