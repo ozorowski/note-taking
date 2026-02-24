@@ -3,13 +3,15 @@ import { query } from '@/lib/db'
 import { createToken, setAuthCookie } from '@/lib/auth'
 import type { User } from '@/lib/types'
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const token = searchParams.get('token')
   const returnUrl = searchParams.get('returnUrl') || '/projects'
 
   if (!token) {
-    return NextResponse.redirect(new URL('/auth/login?error=invalid', request.url))
+    return NextResponse.redirect(new URL('/auth/login?error=invalid', BASE_URL))
   }
 
   // Find valid token
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
   )
 
   if (tokenResult.rows.length === 0) {
-    return NextResponse.redirect(new URL('/auth/login?error=expired', request.url))
+    return NextResponse.redirect(new URL('/auth/login?error=expired', BASE_URL))
   }
 
   const row = tokenResult.rows[0]
@@ -33,11 +35,11 @@ export async function GET(request: NextRequest) {
   const userResult = await query<User>('SELECT * FROM users WHERE id = $1', [row.user_id])
   const user = userResult.rows[0]
   if (!user) {
-    return NextResponse.redirect(new URL('/auth/login?error=invalid', request.url))
+    return NextResponse.redirect(new URL('/auth/login?error=invalid', BASE_URL))
   }
 
   const jwt = createToken(user)
   await setAuthCookie(jwt)
 
-  return NextResponse.redirect(new URL(returnUrl, request.url))
+  return NextResponse.redirect(new URL(returnUrl, BASE_URL))
 }
