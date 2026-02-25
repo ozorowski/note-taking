@@ -107,7 +107,7 @@ export default function AdminDashboard({ adminEmail, totals, userStats, phases, 
         {tab === 'overview'     && <OverviewTab totals={totals} userStats={userStats} phases={phases} signupsByDay={signupsByDay} />}
         {tab === 'users'        && <UsersTab users={users} userStats={userStats} />}
         {tab === 'projects'     && <ProjectsTab projects={projects} phases={phases} />}
-        {tab === 'architecture' && <ArchitectureTab totals={totals} />}
+        {tab === 'architecture' && <ArchitectureTab />}
       </main>
     </div>
   )
@@ -320,7 +320,7 @@ function ProjectsTab({ projects, phases }: { projects: ProjectRow[]; phases: Pha
 
 // ── Architecture tab ───────────────────────────────────────────────────────
 
-function ArchitectureTab({ totals }: { totals: Totals }) {
+function ArchitectureTab() {
   return (
     <div className="space-y-8">
 
