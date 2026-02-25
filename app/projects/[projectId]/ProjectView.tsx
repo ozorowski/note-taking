@@ -9,6 +9,7 @@ import PhaseNavBar from '@/components/PhaseNavBar'
 import DemoProjectBanner from '@/components/DemoProjectBanner'
 import LogoutButton from '@/components/LogoutButton'
 import InterviewsPhase from './InterviewsPhase'
+import CapturePhase from './CapturePhase'
 import NotesPhase from './NotesPhase'
 import ThemesPhase from './ThemesPhase'
 import InsightsPhase from './InsightsPhase'
@@ -215,9 +216,19 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             onRefresh={fetchProject}
           />
         )}
+        {viewingPhase === 'capture' && (
+          <CapturePhase
+            projectId={projectId}
+            currentUserId={currentUser.id}
+            interviews={project.interviews}
+            notes={project.notes}
+            isEditor={isEditor}
+            onRefresh={fetchProject}
+          />
+        )}
         {viewingPhase === 'notes' && (
           <NotesPhase
-            projectId={projectId}
+            currentUserId={currentUser.id}
             notes={project.notes}
             interviews={project.interviews}
             isEditor={isEditor}

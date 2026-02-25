@@ -6,7 +6,11 @@ const config: Config = {
     './components/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        capture: ['var(--font-ibm-plex-mono)', 'monospace'],
+      },
+    },
   },
   plugins: [],
 }

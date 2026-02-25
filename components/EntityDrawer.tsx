@@ -24,7 +24,6 @@ interface Props {
 export default function EntityDrawer({
   type,
   entity,
-  projectId,
   themes,
   insights,
   notes,
@@ -39,8 +38,6 @@ export default function EntityDrawer({
       ? (entity as InsightWithIds).evidence_summary || ''
       : (entity as RecommendationWithIds).rationale || ''
   )
-  const [aiDraft, setAiDraft] = useState(entity.ai_draft || '')
-  const [aiLoading, setAiLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const isInsight = type === 'insight'
@@ -60,8 +57,6 @@ export default function EntityDrawer({
     const body: Record<string, unknown> = { content: content.trim() }
     if (isInsight) body.evidence_summary = secondary.trim() || null
     else body.rationale = secondary.trim() || null
-    if (aiDraft) body.ai_draft = aiDraft.trim()
-
     const endpoint = isInsight ? `/api/insights/${entity.id}` : `/api/recommendations/${entity.id}`
     await fetch(endpoint, {
       method: 'PATCH',
@@ -71,25 +66,6 @@ export default function EntityDrawer({
     setSaving(false)
     setEditing(false)
     onRefresh()
-  }
-
-  async function generateAiDraft() {
-    setAiLoading(true)
-    const endpoint = isInsight ? '/api/ai/draft-insight' : '/api/ai/draft-recommendation'
-    const body = isInsight
-      ? { project_id: projectId, theme_ids: linkedThemeIds }
-      : { project_id: projectId, insight_ids: linkedInsightIds }
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setAiDraft(data.draft || data.content || '')
-      setEditing(true)
-    }
-    setAiLoading(false)
   }
 
   async function linkTheme(themeId: string) {
@@ -279,41 +255,6 @@ export default function EntityDrawer({
             </div>
           )}
 
-          {/* AI Draft */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                AI Draft
-              </label>
-              {isEditor && (
-                <button
-                  onClick={generateAiDraft}
-                  disabled={aiLoading}
-                  className="text-xs px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-50 flex items-center gap-1"
-                >
-                  {aiLoading ? 'Generating...' : '✨ Generate draft'}
-                </button>
-              )}
-            </div>
-            {editing ? (
-              <textarea
-                value={aiDraft}
-                onChange={e => setAiDraft(e.target.value)}
-                rows={3}
-                placeholder="AI-generated draft will appear here..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              />
-            ) : (
-              aiDraft ? (
-                <p className="text-sm text-gray-600 leading-relaxed bg-purple-50 rounded-lg p-3 border border-purple-100">
-                  {aiDraft}
-                </p>
-              ) : (
-                <p className="text-sm text-gray-300 italic">No draft yet</p>
-              )
-            )}
-          </div>
-
           {/* Save / Cancel */}
           {editing && (
             <div className="flex gap-2">
@@ -333,7 +274,6 @@ export default function EntityDrawer({
                       ? (entity as InsightWithIds).evidence_summary || ''
                       : (entity as RecommendationWithIds).rationale || ''
                   )
-                  setAiDraft(entity.ai_draft || '')
                 }}
                 className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
               >

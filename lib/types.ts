@@ -67,7 +67,7 @@ export interface AuthToken {
 
 // ── Trace types ───────────────────────────────────────────────────────────────
 
-export type Phase = 'interviews' | 'notes' | 'themes' | 'insights' | 'recommendations' | 'complete'
+export type Phase = 'interviews' | 'capture' | 'notes' | 'themes' | 'insights' | 'recommendations' | 'complete'
 export type PhaseStatus = 'locked' | 'in_progress' | 'complete'
 export type Role = 'owner' | 'editor' | 'viewer'
 
@@ -107,6 +107,8 @@ export interface Note {
   project_id: string
   interview_id: string | null
   content: string
+  evidence_type?: 'quote' | 'observation' | 'pain_point' | 'need' | null
+  visibility?: 'private' | 'shared'
   created_by: string | null
   created_at: Date
   updated_at: Date
@@ -175,6 +177,7 @@ export interface ProjectActivity {
 export interface ProjectCounts {
   interview_count: number
   note_count: number
+  private_note_count: number
   clustered_note_count: number
   theme_count: number
   insight_count: number

@@ -26,8 +26,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
              LEFT JOIN interviews i ON i.id = n.interview_id
              LEFT JOIN users u ON u.id = n.created_by
              WHERE n.project_id = $1
+               AND (n.visibility = 'shared' OR n.visibility IS NULL OR n.created_by = $2)
              GROUP BY n.id, i.participant_name, u.name
-             ORDER BY n.created_at ASC`, [projectId]),
+             ORDER BY n.created_at ASC`, [projectId, user.user_id]),
       query(`SELECT t.*, COUNT(nth.note_id)::int AS note_count
              FROM themes t
              LEFT JOIN note_themes nth ON nth.theme_id = t.id

@@ -56,6 +56,7 @@ export async function getProjectCounts(projectId: string): Promise<ProjectCounts
     `SELECT
       (SELECT COUNT(*) FROM interviews WHERE project_id = $1)::int AS interview_count,
       (SELECT COUNT(*) FROM notes WHERE project_id = $1)::int AS note_count,
+      (SELECT COUNT(*) FROM notes WHERE project_id = $1 AND visibility = 'private')::int AS private_note_count,
       (SELECT COUNT(DISTINCT note_id) FROM note_themes nt
         JOIN notes n ON n.id = nt.note_id WHERE n.project_id = $1)::int AS clustered_note_count,
       (SELECT COUNT(*) FROM themes WHERE project_id = $1)::int AS theme_count,

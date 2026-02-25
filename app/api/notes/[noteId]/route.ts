@@ -42,10 +42,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(note.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { content, interview_id } = await request.json()
+  const { content, interview_id, visibility, evidence_type } = await request.json()
+
+  // visibility and evidence_type can only be changed by the note creator
+  if ((visibility !== undefined || evidence_type !== undefined) && note.created_by !== user.user_id) {
+    return forbidden()
+  }
+
   const result = await query(
-    `UPDATE notes SET content = COALESCE($1, content), interview_id = COALESCE($2, interview_id), updated_at = NOW() WHERE id = $3 RETURNING *`,
-    [content?.trim() || null, interview_id !== undefined ? interview_id : null, noteId]
+    `UPDATE notes
+     SET content = COALESCE($1, content),
+         interview_id = COALESCE($2, interview_id),
+         visibility = COALESCE($3, visibility),
+         evidence_type = COALESCE($4, evidence_type),
+         updated_at = NOW()
+     WHERE id = $5 RETURNING *`,
+    [content?.trim() || null, interview_id !== undefined ? interview_id : null, visibility || null, evidence_type || null, noteId]
   )
   await broadcastProjectUpdate(note.project_id)
   return NextResponse.json(result.rows[0])

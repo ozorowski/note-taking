@@ -1,9 +1,10 @@
 import type { Phase, PhaseStatus, ProjectCounts } from './types'
 
-export const PHASES: Phase[] = ['interviews', 'notes', 'themes', 'insights', 'recommendations']
+export const PHASES: Phase[] = ['interviews', 'capture', 'notes', 'themes', 'insights', 'recommendations']
 
 export const PHASE_LABELS: Record<Phase, string> = {
   interviews: 'Interviews',
+  capture: 'Capture',
   notes: 'Notes',
   themes: 'Themes',
   insights: 'Insights',
@@ -38,11 +39,16 @@ export function canAdvancePhase(
   if (currentPhase === 'interviews') {
     if (counts.interview_count < 1)
       blockers.push('Add at least 1 interview')
+  } else if (currentPhase === 'capture') {
+    if (counts.note_count < 1)
+      blockers.push('Add at least 1 captured note')
   } else if (currentPhase === 'notes') {
     if (counts.note_count < MIN_NOTES)
       blockers.push(`Add at least ${MIN_NOTES} notes (${counts.note_count} so far)`)
     if (counts.notes_linked_to_interview < counts.note_count)
       blockers.push(`All notes must be linked to an interview (${counts.note_count - counts.notes_linked_to_interview} unlinked)`)
+    if (counts.private_note_count > 0)
+      blockers.push(`Share all private notes with the team before proceeding (${counts.private_note_count} still private)`)
   } else if (currentPhase === 'themes') {
     if (counts.theme_count < 1)
       blockers.push('Create at least 1 theme')

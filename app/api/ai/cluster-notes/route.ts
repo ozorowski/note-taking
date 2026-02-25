@@ -92,22 +92,72 @@ export async function POST(request: NextRequest) {
   const role = await getProjectRole(project_id, user.user_id)
   if (!role || role === 'viewer') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const notesRes = await query(
-    `SELECT id, content FROM notes WHERE project_id = $1 ORDER BY created_at`,
-    [project_id]
-  )
+  // Fetch ungrouped notes and existing themes in parallel
+  const [notesRes, existingThemesRes] = await Promise.all([
+    query(
+      `SELECT n.id, n.content
+       FROM notes n
+       LEFT JOIN note_themes nt ON nt.note_id = n.id
+       WHERE n.project_id = $1 AND nt.note_id IS NULL
+       ORDER BY n.created_at`,
+      [project_id]
+    ),
+    query(
+      `SELECT id, title, description FROM themes WHERE project_id = $1 ORDER BY created_at`,
+      [project_id]
+    ),
+  ])
+
   const notes = notesRes.rows
+  const existingThemes = existingThemesRes.rows
+
   if (notes.length === 0)
-    return NextResponse.json({ error: 'No notes to cluster' }, { status: 400 })
+    return NextResponse.json({ error: 'All notes are already grouped into themes' }, { status: 400 })
 
   const notesList = notes.map((n, i) => `${i}: ${n.content}`).join('\n')
 
-  const prompt = `You are a senior UX researcher. Group the following ${notes.length} research notes into themes.
+  let prompt: string
+
+  if (existingThemes.length > 0) {
+    // Assign to existing themes first, only create new ones if truly necessary
+    const themesList = existingThemes
+      .map(t => `[id:${t.id}] ${t.title}${t.description ? ` — ${t.description}` : ''}`)
+      .join('\n')
+    prompt = `You are a senior UX researcher. Assign the following ${notes.length} ungrouped research notes to the most appropriate existing themes. Only create a new theme if a note clearly does not fit any existing theme.
 
 Return ONLY valid JSON — no markdown, no explanation — in exactly this format:
 {
   "themes": [
     {
+      "id": "existing-theme-id-or-null",
+      "title": "Only set if id is null — 2-4 words, title case",
+      "description": "Only set if id is null — one sentence",
+      "note_indices": [0, 3, 7]
+    }
+  ]
+}
+
+Rules:
+- Strongly prefer assigning to existing themes — create new themes only when no existing theme fits
+- When assigning to an existing theme, use its exact id string and omit title/description
+- Set "id" to null only when a new theme is needed
+- Every note index (0 to ${notes.length - 1}) must appear in exactly one theme entry
+- New theme titles: 2-4 words, title case
+
+Existing themes:
+${themesList}
+
+Ungrouped notes to assign:
+${notesList}`
+  } else {
+    // No existing themes — create from scratch
+    prompt = `You are a senior UX researcher. Group the following ${notes.length} research notes into themes.
+
+Return ONLY valid JSON — no markdown, no explanation — in exactly this format:
+{
+  "themes": [
+    {
+      "id": null,
       "title": "Short theme title (2-4 words)",
       "description": "One sentence describing the pattern in these notes",
       "note_indices": [0, 3, 7]
@@ -123,6 +173,7 @@ Rules:
 
 Notes:
 ${notesList}`
+  }
 
   const aiResult = await callAI(prompt)
   if (!aiResult.text) {
@@ -131,7 +182,7 @@ ${notesList}`
   }
   const raw = aiResult.text
 
-  let parsed: { themes: { title: string; description: string; note_indices: number[] }[] }
+  let parsed: { themes: { id: string | null; title?: string; description?: string; note_indices: number[] }[] }
   try {
     parsed = extractJSON(raw)
   } catch {
@@ -141,17 +192,28 @@ ${notesList}`
   if (!Array.isArray(parsed?.themes))
     return NextResponse.json({ error: 'Unexpected AI response structure' }, { status: 500 })
 
+  const existingThemeIds = new Set(existingThemes.map(t => t.id))
+
   const client = await getClient()
   try {
     await client.query('BEGIN')
-    const created = []
+    const created: unknown[] = []
     for (const theme of parsed.themes) {
-      const r = await client.query(
-        `INSERT INTO themes (project_id, title, description, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-        [project_id, theme.title, theme.description || null, user.user_id]
-      )
-      const themeId = r.rows[0].id
-      created.push(r.rows[0])
+      let themeId: string
+
+      if (theme.id && existingThemeIds.has(theme.id)) {
+        // Assign notes to an existing theme — no insert needed
+        themeId = theme.id
+      } else {
+        // Create a new theme
+        const r = await client.query(
+          `INSERT INTO themes (project_id, title, description, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
+          [project_id, theme.title || 'Untitled Theme', theme.description || null, user.user_id]
+        )
+        themeId = r.rows[0].id
+        created.push(r.rows[0])
+      }
+
       for (const idx of theme.note_indices ?? []) {
         const note = notes[idx]
         if (!note) continue

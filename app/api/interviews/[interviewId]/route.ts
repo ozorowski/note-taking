@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   return NextResponse.json(result.rows[0])
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
   const { interviewId } = await params
@@ -34,6 +34,21 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!iv) return notFound()
   const role = await getProjectRole(iv.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
+
+  // action: 'disassociate' | 'reassign' | 'delete_notes'
+  // reassignToId: string (only for 'reassign')
+  const body = await req.json().catch(() => ({}))
+  const { action = 'disassociate', reassignToId } = body
+
+  if (action === 'delete_notes') {
+    await query('DELETE FROM notes WHERE interview_id = $1', [interviewId])
+  } else if (action === 'reassign' && reassignToId) {
+    await query('UPDATE notes SET interview_id = $1 WHERE interview_id = $2', [reassignToId, interviewId])
+  } else {
+    // disassociate (default)
+    await query('UPDATE notes SET interview_id = NULL WHERE interview_id = $1', [interviewId])
+  }
+
   await query('DELETE FROM interviews WHERE id = $1', [interviewId])
   return NextResponse.json({ success: true })
 }
