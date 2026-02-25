@@ -261,59 +261,160 @@ function UsersTab({ users, userStats }: { users: UserRow[]; userStats: UserStats
 
 // ── Projects tab ───────────────────────────────────────────────────────────
 
+const PIPELINE_PHASES = ['interviews', 'capture', 'notes', 'themes', 'insights', 'recommendations', 'complete'] as const
+
+const PIPELINE_COLORS: Record<string, { bg: string; border: string; header: string; dot: string }> = {
+  interviews:      { bg: 'bg-slate-50',   border: 'border-slate-200',   header: 'text-slate-600',    dot: 'bg-slate-400' },
+  capture:         { bg: 'bg-sky-50',     border: 'border-sky-200',     header: 'text-sky-700',      dot: 'bg-sky-400' },
+  notes:           { bg: 'bg-blue-50',    border: 'border-blue-200',    header: 'text-blue-700',     dot: 'bg-blue-400' },
+  themes:          { bg: 'bg-purple-50',  border: 'border-purple-200',  header: 'text-purple-700',   dot: 'bg-purple-400' },
+  insights:        { bg: 'bg-green-50',   border: 'border-green-200',   header: 'text-green-700',    dot: 'bg-green-400' },
+  recommendations: { bg: 'bg-orange-50',  border: 'border-orange-200',  header: 'text-orange-700',   dot: 'bg-orange-400' },
+  complete:        { bg: 'bg-emerald-50', border: 'border-emerald-200', header: 'text-emerald-700',  dot: 'bg-emerald-500' },
+}
+
 function ProjectsTab({ projects, phases }: { projects: ProjectRow[]; phases: PhaseRow[] }) {
+  const [view, setView] = useState<'pipeline' | 'table'>('pipeline')
   const [phaseFilter, setPhaseFilter] = useState('all')
   const filtered = phaseFilter === 'all' ? projects : projects.filter(p => p.current_phase === phaseFilter)
 
+  // Group projects by phase for pipeline view
+  const byPhase = Object.fromEntries(
+    PIPELINE_PHASES.map(phase => [phase, projects.filter(p => p.current_phase === phase)])
+  )
+  const total = projects.length
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setPhaseFilter('all')}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${phaseFilter === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}
-        >
-          All ({projects.length})
-        </button>
-        {phases.map(row => (
+      {/* View toggle + summary */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{total} project{total !== 1 ? 's' : ''} total</p>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           <button
-            key={row.phase}
-            onClick={() => setPhaseFilter(row.phase)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${phaseFilter === row.phase ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}
+            onClick={() => setView('pipeline')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${view === 'pipeline' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {PHASE_META[row.phase]?.label ?? row.phase} ({row.count})
+            Pipeline
           </button>
-        ))}
+          <button
+            onClick={() => setView('table')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${view === 'table' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Table
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50 text-left">
-              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Title</th>
-              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Phase</th>
-              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Members</th>
-              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Created</th>
-              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Last active</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(p => (
-              <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-2.5">
-                  <Link href={`/projects/${p.id}`} className="text-blue-600 hover:underline font-medium">{p.title}</Link>
-                </td>
-                <td className="px-4 py-2.5"><PhaseChip phase={p.current_phase} /></td>
-                <td className="px-4 py-2.5 text-gray-500">{p.member_count}</td>
-                <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmt(p.created_at)}</td>
-                <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmt(p.updated_at)}</td>
-              </tr>
+      {view === 'pipeline' ? (
+        /* ── Pipeline view ── */
+        <div>
+          {/* Funnel summary bar */}
+          {total > 0 && (
+            <div className="flex h-2 rounded-full overflow-hidden mb-6 gap-0.5">
+              {PIPELINE_PHASES.map(phase => {
+                const count = byPhase[phase]?.length ?? 0
+                if (count === 0) return null
+                const pct = (count / total) * 100
+                return (
+                  <div
+                    key={phase}
+                    className={`${PIPELINE_COLORS[phase].dot} transition-all`}
+                    style={{ width: `${pct}%` }}
+                    title={`${PHASE_META[phase]?.label}: ${count}`}
+                  />
+                )
+              })}
+            </div>
+          )}
+
+          {/* Columns */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+            {PIPELINE_PHASES.map(phase => {
+              const col = PIPELINE_COLORS[phase]
+              const items = byPhase[phase] ?? []
+              return (
+                <div key={phase} className={`rounded-xl border ${col.border} ${col.bg} flex flex-col min-h-[120px]`}>
+                  {/* Column header */}
+                  <div className={`px-3 py-2.5 border-b ${col.border} flex items-center justify-between`}>
+                    <span className={`text-xs font-semibold ${col.header}`}>{PHASE_META[phase]?.label}</span>
+                    <span className={`text-xs font-bold ${col.header} opacity-70`}>{items.length}</span>
+                  </div>
+                  {/* Project cards */}
+                  <div className="flex-1 p-2 space-y-1.5">
+                    {items.length === 0 ? (
+                      <p className="text-[11px] text-gray-300 text-center pt-3">—</p>
+                    ) : (
+                      items.map(p => (
+                        <Link
+                          key={p.id}
+                          href={`/projects/${p.id}`}
+                          className="block bg-white rounded-lg px-2.5 py-2 text-[11px] text-gray-700 hover:text-blue-600 hover:shadow-sm border border-gray-100 transition-all leading-snug"
+                        >
+                          {p.title}
+                          <span className="block text-[10px] text-gray-400 mt-0.5">
+                            {p.member_count} member{p.member_count !== 1 ? 's' : ''} · {fmt(p.updated_at)}
+                          </span>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        /* ── Table view ── */
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setPhaseFilter('all')}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${phaseFilter === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}
+            >
+              All ({projects.length})
+            </button>
+            {phases.map(row => (
+              <button
+                key={row.phase}
+                onClick={() => setPhaseFilter(row.phase)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${phaseFilter === row.phase ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}
+              >
+                {PHASE_META[row.phase]?.label ?? row.phase} ({row.count})
+              </button>
             ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No projects in this phase.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                  <th className="px-4 py-3 text-xs text-gray-400 font-medium">Title</th>
+                  <th className="px-4 py-3 text-xs text-gray-400 font-medium">Phase</th>
+                  <th className="px-4 py-3 text-xs text-gray-400 font-medium">Members</th>
+                  <th className="px-4 py-3 text-xs text-gray-400 font-medium">Created</th>
+                  <th className="px-4 py-3 text-xs text-gray-400 font-medium">Last active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2.5">
+                      <Link href={`/projects/${p.id}`} className="text-blue-600 hover:underline font-medium">{p.title}</Link>
+                    </td>
+                    <td className="px-4 py-2.5"><PhaseChip phase={p.current_phase} /></td>
+                    <td className="px-4 py-2.5 text-gray-500">{p.member_count}</td>
+                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmt(p.created_at)}</td>
+                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmt(p.updated_at)}</td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No projects in this phase.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
