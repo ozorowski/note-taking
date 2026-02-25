@@ -27,6 +27,8 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   const [loading, setLoading] = useState(false)
   const [aiClustering, setAiClustering] = useState(false)
   const [aiError, setAiError] = useState('')
+  const [editingThemeId, setEditingThemeId] = useState<string | null>(null)
+  const [editingThemeTitle, setEditingThemeTitle] = useState('')
 
   const clusterPct = getClusteringProgress(counts)
 
@@ -87,6 +89,18 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   async function deleteTheme(id: string) {
     if (!confirm('Delete this theme? Notes will be ungrouped.')) return
     await fetch(`/api/themes/${id}`, { method: 'DELETE' })
+    onRefresh()
+  }
+
+  async function renameTheme(id: string) {
+    const trimmed = editingThemeTitle.trim()
+    setEditingThemeId(null)
+    if (!trimmed || trimmed === themes.find(t => t.id === id)?.title) return
+    await fetch(`/api/themes/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    })
     onRefresh()
   }
 
@@ -278,7 +292,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                   onDragStart={() => { setDragNoteId(note.id); setDragSourceThemeId(null) }}
                   onDragEnd={clearDragState}
                   className={[
-                    'bg-white border border-gray-200 rounded-lg p-3 text-xs text-gray-700 leading-relaxed select-none transition-all duration-300',
+                    'bg-white border border-gray-200 rounded-lg p-3 text-sm text-gray-700 leading-relaxed select-none transition-all duration-300',
                     isEditor ? 'cursor-grab active:cursor-grabbing' : '',
                     dragNoteId === note.id ? 'opacity-30 saturate-0 border-dashed border-blue-300' : dragNoteId ? '' : 'hover:shadow-sm',
                   ].join(' ')}
@@ -317,7 +331,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
         </div>
 
         {/* Right panel: themes */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto bg-gray-50">
+        <div className="flex-1 overflow-x-auto overflow-y-auto bg-gray-100">
           {addingTheme && (
             <form onSubmit={createTheme} className="m-4 flex gap-2 items-center">
               <input
@@ -362,8 +376,8 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                   <div
                     key={theme.id}
                     className={[
-                      'bg-white border-2 rounded-xl w-64 flex-shrink-0 flex flex-col min-h-[160px] transition-colors',
-                      isOver ? 'border-blue-500 bg-blue-50 shadow-[inset_0_0_0_1px_#3b82f6]' : 'border-dashed border-gray-200',
+                      'bg-white border rounded-xl w-64 flex-shrink-0 flex flex-col min-h-[160px] transition-colors',
+                      isOver ? 'border-blue-400 bg-blue-50 shadow-[inset_0_0_0_1px_#60a5fa]' : 'border-gray-200',
                     ].join(' ')}
                     onDragOver={e => {
                       e.preventDefault()
@@ -379,7 +393,26 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                     onDrop={() => handleDrop(theme.id, themeNotes)}
                   >
                     <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-                      <h4 className="font-semibold text-sm text-gray-800 flex-1 leading-tight">{theme.title}</h4>
+                      {isEditor && editingThemeId === theme.id ? (
+                        <input
+                          autoFocus
+                          value={editingThemeTitle}
+                          onChange={e => setEditingThemeTitle(e.target.value)}
+                          onBlur={() => renameTheme(theme.id)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); renameTheme(theme.id) }
+                            if (e.key === 'Escape') setEditingThemeId(null)
+                          }}
+                          className="flex-1 font-semibold text-sm text-gray-800 bg-transparent border-b border-blue-400 outline-none leading-tight mr-2"
+                        />
+                      ) : (
+                        <h4
+                          className={`font-semibold text-sm text-gray-800 flex-1 leading-tight ${isEditor ? 'cursor-text hover:text-blue-600' : ''}`}
+                          onClick={() => { if (isEditor) { setEditingThemeId(theme.id); setEditingThemeTitle(theme.title) } }}
+                        >
+                          {theme.title}
+                        </h4>
+                      )}
                       <span className="text-xs text-gray-400 mx-2">{themeNotes.length}</span>
                       {isEditor && (
                         <button
@@ -413,7 +446,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                             onDragEnd={clearDragState}
                             onDragOver={e => handleNoteDragOver(e, theme.id, noteIdx)}
                             className={[
-                              'border rounded-lg p-2.5 text-xs text-gray-700 group relative transition-all duration-300',
+                              'border rounded-lg p-2.5 text-sm text-gray-700 group relative transition-all duration-300',
                               isEditor ? 'cursor-grab active:cursor-grabbing' : '',
                               isDropped
                                 ? 'bg-blue-50 border-blue-300 shadow-sm shadow-blue-100'
@@ -451,12 +484,11 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                               <button
                                 onClick={() => detachNote(theme.id, note.id)}
                                 className="absolute top-1.5 right-1.5 text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-colors"
-                                title="Move back to ungrouped"
+                                title="Remove from theme"
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                                  <line x1="2" y1="2" x2="22" y2="22"/>
+                                  <polyline points="9 10 4 15 9 20"/>
+                                  <path d="M20 4v7a4 4 0 0 1-4 4H4"/>
                                 </svg>
                               </button>
                             )}
