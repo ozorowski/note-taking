@@ -34,6 +34,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Check for duplicate title (case-insensitive) among this user's projects
+  const existing = await query(
+    `SELECT 1 FROM projects p
+     JOIN project_memberships pm ON pm.project_id = p.id AND pm.user_id = $1
+     WHERE LOWER(p.title) = LOWER($2) LIMIT 1`,
+    [user.user_id, title.trim()]
+  )
+  if (existing.rows.length > 0) {
+    return badRequest('You already have a project with this name')
+  }
+
   const result = await query(
     `INSERT INTO projects (title, description, owner_id, demo, current_phase)
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,

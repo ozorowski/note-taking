@@ -13,11 +13,26 @@ export async function createDemoProject(userId: string): Promise<{ id: string }>
   try {
     await client.query('BEGIN')
 
+    // Pick a unique title by suffixing (2), (3), … if needed
+    const baseTitle = 'Deliveroo App — Usability Study'
+    const existingRes = await client.query<{ title: string }>(
+      `SELECT title FROM projects p
+       JOIN project_memberships pm ON pm.project_id = p.id AND pm.user_id = $1
+       WHERE p.title ILIKE $2 OR p.title ILIKE $3`,
+      [userId, baseTitle, `${baseTitle} (%)`]
+    )
+    const taken = new Set(existingRes.rows.map(r => r.title.toLowerCase()))
+    let demoTitle = baseTitle
+    let suffix = 2
+    while (taken.has(demoTitle.toLowerCase())) {
+      demoTitle = `${baseTitle} (${suffix++})`
+    }
+
     const projResult = await client.query(
       `INSERT INTO projects (title, description, owner_id, demo, current_phase)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [
-        'Deliveroo App — Usability Study',
+        demoTitle,
         'Evaluate the end-to-end ordering experience on the Deliveroo app, from restaurant discovery to order completion, with a focus on task success and user confidence.',
         userId,
         true,

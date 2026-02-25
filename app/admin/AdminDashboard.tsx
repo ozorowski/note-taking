@@ -69,10 +69,16 @@ export default function AdminDashboard({ adminEmail, totals, userStats, phases, 
       {/* Nav */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/projects" className="text-gray-400 hover:text-gray-600 text-sm">← Back</Link>
-            <span className="text-gray-300">|</span>
-            <span className="text-sm font-semibold text-gray-800">Admin</span>
+          <div className="flex items-center gap-6">
+            <span className="text-xl font-bold tracking-tight">Trace</span>
+            <div className="flex items-center gap-1">
+              <Link href="/projects" className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors">
+                Projects
+              </Link>
+              <span className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg cursor-default">
+                Admin
+              </span>
+            </div>
           </div>
           <span className="text-xs text-gray-400">{adminEmail}</span>
         </div>
@@ -234,7 +240,7 @@ function UsersTab({ users, userStats }: { users: UserRow[]; userStats: UserStats
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u, i) => (
+            {filtered.map(u => (
               <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-2.5 text-gray-300 text-xs">{users.length - users.indexOf(u)}</td>
                 <td className="px-4 py-2.5 text-gray-800 font-medium">{u.name}</td>

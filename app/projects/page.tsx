@@ -7,9 +7,13 @@ import DeleteProjectButton from '@/components/DeleteProjectButton'
 import { PHASE_LABELS } from '@/lib/phases'
 import type { Phase } from '@/lib/types'
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+
 export default async function ProjectsPage() {
   const user = await verifyAuth()
   if (!user) redirect('/auth/login')
+
+  const isAdmin = !!(ADMIN_EMAIL && user.email === ADMIN_EMAIL)
 
   const result = await query(
     `SELECT p.*, pm.role FROM projects p
@@ -23,7 +27,14 @@ export default async function ProjectsPage() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <span className="text-xl font-bold tracking-tight">Trace</span>
+          <div className="flex items-center gap-6">
+            <span className="text-xl font-bold tracking-tight">Trace</span>
+            {isAdmin && (
+              <Link href="/admin" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
+                Admin
+              </Link>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{user.name}</span>
             <LogoutButton />
