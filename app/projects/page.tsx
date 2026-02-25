@@ -64,7 +64,7 @@ export default async function ProjectsPage() {
                     {p.demo && (
                       <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">demo</span>
                     )}
-                    {p.role === 'owner' && <DeleteProjectButton projectId={p.id} />}
+                    {p.role === 'owner' && <DeleteProjectButton projectId={p.id} projectTitle={p.title} />}
                   </div>
                 </div>
                 {p.description && <p className="text-sm text-gray-500 mb-4 line-clamp-2">{p.description}</p>}

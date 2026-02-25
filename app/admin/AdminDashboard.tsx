@@ -12,7 +12,7 @@ interface Totals {
 }
 interface UserStats { real_users: number; guest_users: number; new_7d: number; new_30d: number }
 interface PhaseRow { phase: string; count: number }
-interface UserRow { id: string; name: string; email: string; created_at: string }
+interface UserRow { id: string; name: string; email: string; created_at: string; project_count: number }
 interface ProjectRow { id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number }
 interface DayRow { day: string; count: number }
 
@@ -120,16 +120,26 @@ function OverviewTab({ totals, userStats, phases, signupsByDay }: {
 
   return (
     <div className="space-y-6">
-      {/* Stat grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <BigStat label="Real users"    value={userStats.real_users}    sub={`+${userStats.new_7d} this week`} accent="blue" />
-        <BigStat label="Guest sessions" value={userStats.guest_users}  accent="gray" />
-        <BigStat label="Active projects" value={totals.projects}       sub={`+${totals.demo_projects} demo`} accent="purple" />
-        <BigStat label="Interviews"     value={totals.interviews}      accent="gray" />
-        <BigStat label="Notes"          value={totals.notes}           accent="gray" />
-        <BigStat label="Themes"         value={totals.themes}          accent="gray" />
-        <BigStat label="Insights"       value={totals.insights}        accent="gray" />
-        <BigStat label="Recommendations" value={totals.recommendations} accent="gray" />
+      {/* Top — audience */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Audience</p>
+        <div className="grid grid-cols-3 gap-3">
+          <BigStat label="Real users"     value={userStats.real_users}   sub={`+${userStats.new_7d} this week`} accent="blue" />
+          <BigStat label="Guest sessions" value={userStats.guest_users}  accent="gray" />
+          <BigStat label="Active projects" value={totals.projects}       sub={`+${totals.demo_projects} demo`} accent="purple" />
+        </div>
+      </div>
+
+      {/* Bottom — research activity */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Research activity</p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <BigStat label="Interviews"      value={totals.interviews}      accent="gray" />
+          <BigStat label="Notes"           value={totals.notes}           accent="gray" />
+          <BigStat label="Themes"          value={totals.themes}          accent="gray" />
+          <BigStat label="Insights"        value={totals.insights}        accent="gray" />
+          <BigStat label="Recommendations" value={totals.recommendations} accent="gray" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -221,6 +231,7 @@ function UsersTab({ users, userStats }: { users: UserRow[]; userStats: UserStats
               <th className="px-4 py-3 text-xs text-gray-400 font-medium">#</th>
               <th className="px-4 py-3 text-xs text-gray-400 font-medium">Name</th>
               <th className="px-4 py-3 text-xs text-gray-400 font-medium">Email</th>
+              <th className="px-4 py-3 text-xs text-gray-400 font-medium">Projects</th>
               <th className="px-4 py-3 text-xs text-gray-400 font-medium">Joined</th>
             </tr>
           </thead>
@@ -230,11 +241,14 @@ function UsersTab({ users, userStats }: { users: UserRow[]; userStats: UserStats
                 <td className="px-4 py-2.5 text-gray-300 text-xs">{users.length - users.indexOf(u)}</td>
                 <td className="px-4 py-2.5 text-gray-800 font-medium">{u.name}</td>
                 <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{u.email}</td>
+                <td className="px-4 py-2.5 text-gray-600 text-xs font-medium">
+                  {u.project_count > 0 ? u.project_count : <span className="text-gray-300">—</span>}
+                </td>
                 <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmt(u.created_at)}</td>
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">No results for &quot;{search}&quot;</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">No results for &quot;{search}&quot;</td></tr>
             )}
           </tbody>
         </table>

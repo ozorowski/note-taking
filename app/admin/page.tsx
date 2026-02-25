@@ -35,11 +35,12 @@ export default async function AdminPage() {
       FROM projects WHERE demo = false
       GROUP BY current_phase ORDER BY count DESC`),
 
-    query<{ id: string; name: string; email: string; created_at: string }>(`
-      SELECT id, name, email, created_at::text
-      FROM users
-      WHERE is_guest IS DISTINCT FROM true AND email IS NOT NULL
-      ORDER BY created_at DESC`),
+    query<{ id: string; name: string; email: string; created_at: string; project_count: number }>(`
+      SELECT u.id, u.name, u.email, u.created_at::text,
+        (SELECT COUNT(*) FROM project_memberships pm WHERE pm.user_id = u.id)::int AS project_count
+      FROM users u
+      WHERE u.is_guest IS DISTINCT FROM true AND u.email IS NOT NULL
+      ORDER BY u.created_at DESC`),
 
     query<{ id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number }>(`
       SELECT p.id, p.title, p.current_phase, p.created_at::text, p.updated_at::text,
