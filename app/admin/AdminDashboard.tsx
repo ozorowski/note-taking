@@ -17,7 +17,6 @@ interface ProjectRow { id: string; title: string; current_phase: string; created
 interface DayRow { day: string; count: number }
 
 interface Props {
-  adminEmail: string
   userName: string
   totals: Totals
   userStats: UserStats
@@ -63,7 +62,7 @@ function fmt(d: string) {
 
 // ── Root component ─────────────────────────────────────────────────────────
 
-export default function AdminDashboard({ adminEmail, userName, totals, userStats, phases, users, projects, signupsByDay }: Props) {
+export default function AdminDashboard({ userName, totals, userStats, phases, users, projects, signupsByDay }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
 
   return (
