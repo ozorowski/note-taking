@@ -2,7 +2,7 @@ import { verifyAuth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { query } from '@/lib/db'
 import Link from 'next/link'
-import LogoutButton from '@/components/LogoutButton'
+import AppNav from '@/components/AppNav'
 import DeleteProjectButton from '@/components/DeleteProjectButton'
 import { PHASE_LABELS } from '@/lib/phases'
 import type { Phase } from '@/lib/types'
@@ -25,22 +25,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="text-xl font-bold tracking-tight">Trace</span>
-            {isAdmin && (
-              <Link href="/admin" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
-                Admin
-              </Link>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{user.name}</span>
-            <LogoutButton />
-          </div>
-        </div>
-      </nav>
+      <AppNav userName={user.name} isAdmin={isAdmin} activePage="projects" />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-8">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import AppNav from '@/components/AppNav'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ interface DayRow { day: string; count: number }
 
 interface Props {
   adminEmail: string
+  userName: string
   totals: Totals
   userStats: UserStats
   phases: PhaseRow[]
@@ -61,28 +63,12 @@ function fmt(d: string) {
 
 // ── Root component ─────────────────────────────────────────────────────────
 
-export default function AdminDashboard({ adminEmail, totals, userStats, phases, users, projects, signupsByDay }: Props) {
+export default function AdminDashboard({ adminEmail, userName, totals, userStats, phases, users, projects, signupsByDay }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Nav */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="text-xl font-bold tracking-tight">Trace</span>
-            <div className="flex items-center gap-1">
-              <Link href="/projects" className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 rounded-lg hover:bg-gray-100 transition-colors">
-                Projects
-              </Link>
-              <span className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg cursor-default">
-                Admin
-              </span>
-            </div>
-          </div>
-          <span className="text-xs text-gray-400">{adminEmail}</span>
-        </div>
-      </nav>
+      <AppNav userName={userName} isAdmin activePage="admin" />
 
       {/* Tab bar */}
       <div className="bg-white border-b border-gray-200">

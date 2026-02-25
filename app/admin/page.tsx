@@ -58,6 +58,7 @@ export default async function AdminPage() {
   return (
     <AdminDashboard
       adminEmail={user.email!}
+      userName={user.name}
       totals={totalsRes.rows[0]}
       userStats={userStatsRes.rows[0]}
       phases={phaseRes.rows}
