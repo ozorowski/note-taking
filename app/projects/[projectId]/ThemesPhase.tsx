@@ -22,6 +22,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
   const [dragInsertPoint, setDragInsertPoint] = useState<{ themeId: string; index: number } | null>(null)
   const [themeNoteOrder, setThemeNoteOrder] = useState<Record<string, string[]>>({})
   const [recentlyDroppedNoteId, setRecentlyDroppedNoteId] = useState<string | null>(null)
+  const [dragOverUngrouped, setDragOverUngrouped] = useState(false)
   const [filterInterview, setFilterInterview] = useState('')
   const [filterTag, setFilterTag] = useState('')
   const [loading, setLoading] = useState(false)
@@ -180,11 +181,20 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
     setDragInsertPoint(null)
   }
 
+  function handleDropUngrouped() {
+    if (!dragNoteId || !dragSourceThemeId || !isEditor) return
+    detachNote(dragSourceThemeId, dragNoteId)
+    setRecentlyDroppedNoteId(dragNoteId)
+    setTimeout(() => setRecentlyDroppedNoteId(null), 900)
+    clearDragState()
+  }
+
   function clearDragState() {
     setDragNoteId(null)
     setDragSourceThemeId(null)
     setDragOverThemeId(null)
     setDragInsertPoint(null)
+    setDragOverUngrouped(false)
   }
 
   const hasFilter = filterInterview || filterTag
@@ -237,7 +247,17 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: ungrouped notes */}
-        <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+        <div
+          className={[
+            'w-64 flex-shrink-0 border-r overflow-y-auto transition-colors',
+            dragOverUngrouped && dragSourceThemeId
+              ? 'bg-blue-50 border-blue-300'
+              : 'bg-gray-50 border-gray-200',
+          ].join(' ')}
+          onDragOver={e => { if (dragSourceThemeId) { e.preventDefault(); setDragOverUngrouped(true) } }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverUngrouped(false) }}
+          onDrop={handleDropUngrouped}
+        >
           <div className="p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
