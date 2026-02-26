@@ -1,6 +1,8 @@
 import { verifyAuth } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { redirect } from 'next/navigation'
+import { readdirSync } from 'fs'
+import { join } from 'path'
 import AdminDashboard from './AdminDashboard'
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL
@@ -10,7 +12,7 @@ export default async function AdminPage() {
   if (!user) redirect('/auth/login')
   if (!ADMIN_EMAIL || user.email !== ADMIN_EMAIL) redirect('/projects')
 
-  const [totalsRes, userStatsRes, phaseRes, usersRes, projectsRes, signupsByDayRes] = await Promise.all([
+  const [totalsRes, userStatsRes, phaseRes, usersRes, projectsRes, signupsByDayRes, dbSchemaRes] = await Promise.all([
     query<{
       projects: number; demo_projects: number; interviews: number
       notes: number; themes: number; insights: number; recommendations: number
@@ -54,7 +56,17 @@ export default async function AdminPage() {
       WHERE created_at > NOW() - INTERVAL '30 days'
         AND is_guest IS DISTINCT FROM true
       GROUP BY day ORDER BY day`),
+
+    query<{ table_name: string; column_name: string; data_type: string; is_nullable: string }>(`
+      SELECT table_name, column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      ORDER BY table_name, ordinal_position`),
   ])
+
+  const migrations = readdirSync(join(process.cwd(), 'migrations'))
+    .filter(f => f.endsWith('.sql'))
+    .sort()
 
   return (
     <AdminDashboard
@@ -65,6 +77,8 @@ export default async function AdminPage() {
       users={usersRes.rows}
       projects={projectsRes.rows}
       signupsByDay={signupsByDayRes.rows}
+      dbSchema={dbSchemaRes.rows}
+      migrations={migrations}
     />
   )
 }

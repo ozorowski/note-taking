@@ -109,6 +109,9 @@ export interface Note {
   content: string
   evidence_type?: 'quote' | 'observation' | 'pain_point' | 'need' | null
   visibility?: 'private' | 'shared'
+  source_type?: 'interview' | 'url_import'
+  source_url?: string | null
+  source_author?: string | null
   created_by: string | null
   created_at: Date
   updated_at: Date
@@ -139,6 +142,9 @@ export interface Insight {
   content: string
   evidence_summary: string | null
   ai_draft: string | null
+  root_cause?: string | null
+  iqs_score?: number | null
+  supporting_note_ids?: string[] | null
   created_by: string | null
   created_at: Date
   updated_at: Date

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Recommendation, Insight, Theme, Note } from '@/lib/types'
 import EntityDrawer from '@/components/EntityDrawer'
 
@@ -32,64 +32,64 @@ export default function RecommendationsPhase({
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<RecommendationWithIds | null>(null)
 
+  // Keep drawer content fresh after data refresh without closing it
+  useEffect(() => {
+    if (selected) {
+      const updated = recommendations.find(r => r.id === selected.id)
+      if (updated) setSelected(updated)
+    }
+  }, [recommendations])
+
   // AI generation state
   const [showAiPanel, setShowAiPanel] = useState(false)
-  const [selectedInsightIds, setSelectedInsightIds] = useState<string[]>([])
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiDraft, setAiDraft] = useState<string | null>(null)
-  const [aiAdded, setAiAdded] = useState(false)
+  const [aiDrafts, setAiDrafts] = useState<{ recommendation: string; primary_insight_id: string; link_justification: string }[]>([])
+  const [lowQualityCount, setLowQualityCount] = useState(0)
+  const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
 
-  function toggleInsight(id: string) {
-    setSelectedInsightIds(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
-  }
-
-  async function generateDraft() {
-    if (selectedInsightIds.length === 0) return
+  async function generateDrafts() {
     setAiLoading(true)
-    setAiDraft(null)
-    setAiAdded(false)
+    setAiDrafts([])
+    setLowQualityCount(0)
+    setAddedIndices(new Set())
     const res = await fetch('/api/ai/draft-recommendation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, insight_ids: selectedInsightIds }),
+      body: JSON.stringify({ project_id: projectId }),
     })
     if (res.ok) {
       const data = await res.json()
-      setAiDraft(data.draft || null)
+      setAiDrafts(data.drafts || [])
+      setLowQualityCount(data.low_quality_count || 0)
     }
     setAiLoading(false)
   }
 
-  async function addDraftRec() {
-    if (!aiDraft) return
+  async function addDraftRec(draft: { recommendation: string; primary_insight_id: string }, index: number) {
     const res = await fetch('/api/recommendations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, content: aiDraft }),
+      body: JSON.stringify({ project_id: projectId, content: draft.recommendation }),
     })
     if (res.ok) {
       const rec = await res.json()
-      await Promise.all(
-        selectedInsightIds.map(insightId =>
-          fetch(`/api/recommendations/${rec.id}/insights`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ insight_id: insightId }),
-          })
-        )
-      )
-      setAiAdded(true)
+      if (draft.primary_insight_id) {
+        await fetch(`/api/recommendations/${rec.id}/insights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ insight_id: draft.primary_insight_id }),
+        })
+      }
+      setAddedIndices(prev => new Set([...prev, index]))
       onRefresh()
     }
   }
 
   function closeAiPanel() {
     setShowAiPanel(false)
-    setSelectedInsightIds([])
-    setAiDraft(null)
-    setAiAdded(false)
+    setAiDrafts([])
+    setLowQualityCount(0)
+    setAddedIndices(new Set())
   }
 
   async function addRec(e: React.FormEvent) {
@@ -154,65 +154,76 @@ export default function RecommendationsPhase({
       {/* AI generation panel */}
       {showAiPanel && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-5">
-          <h3 className="text-sm font-semibold text-purple-800 mb-1">Ask Tracey to draft a recommendation</h3>
+          <h3 className="text-sm font-semibold text-purple-800 mb-1">Ask Tracey to draft recommendations</h3>
           <p className="text-xs text-purple-600 mb-4">
-            Pick insights → Tracey drafts a concrete, actionable recommendation.
+            Tracey reviews all {insights.length} insight{insights.length !== 1 ? 's' : ''} and drafts as many recommendations as the research warrants.
           </p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {insights.map(ins => (
-              <button
-                key={ins.id}
-                type="button"
-                onClick={() => toggleInsight(ins.id)}
-                className={[
-                  'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors text-left max-w-xs',
-                  selectedInsightIds.includes(ins.id)
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white text-purple-700 border-purple-200 hover:border-purple-400',
-                ].join(' ')}
-              >
-                {ins.content.length > 80 ? ins.content.slice(0, 80) + '…' : ins.content}
-              </button>
-            ))}
-            {insights.length === 0 && (
-              <p className="text-xs text-purple-500">No insights yet — go back to the Insights phase first.</p>
-            )}
-          </div>
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={generateDraft}
-              disabled={aiLoading || selectedInsightIds.length === 0}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40"
-            >
-              {aiLoading ? 'Tracey is thinking...' : `Ask Tracey to generate from ${selectedInsightIds.length} insight${selectedInsightIds.length !== 1 ? 's' : ''}`}
-            </button>
-            <button onClick={closeAiPanel} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
-              Close
-            </button>
-          </div>
-          {aiDraft && (
-            <div className="border-t border-purple-200 pt-4">
-              <p className="text-xs font-semibold text-purple-700 mb-2">Tracey's draft — review and add:</p>
-              <div className="bg-white border border-purple-200 rounded-lg p-4">
-                <p className="text-sm text-gray-700 leading-relaxed mb-3">{aiDraft}</p>
-                {aiAdded ? (
-                  <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={addDraftRec}
-                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                    >
-                      + Add recommendation
-                    </button>
-                    {selectedInsightIds.length > 0 && (
-                      <span className="text-xs text-purple-500">
-                        Insights will be linked automatically
-                      </span>
+          {insights.length === 0 ? (
+            <p className="text-xs text-purple-500 mb-4">No insights yet — go back to the Insights phase first.</p>
+          ) : (
+            <>
+              {lowQualityCount > 0 && (
+                <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                  ⚠ {lowQualityCount} insight{lowQualityCount !== 1 ? 's' : ''} {lowQualityCount !== 1 ? 'have' : 'has'} a low quality score — recommendations for {lowQualityCount !== 1 ? 'these' : 'this'} may be imprecise.
+                </div>
+              )}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={generateDrafts}
+                  disabled={aiLoading || insights.length === 0}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40"
+                >
+                  {aiLoading ? 'Tracey is thinking...' : 'Generate recommendations'}
+                </button>
+                <button onClick={closeAiPanel} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+                  Close
+                </button>
+              </div>
+            </>
+          )}
+          {aiDrafts.length > 0 && (
+            <div className="space-y-3 border-t border-purple-200 pt-4">
+              <p className="text-xs font-semibold text-purple-700">
+                Tracey drafted {aiDrafts.length} recommendation{aiDrafts.length !== 1 ? 's' : ''} — review and add:
+              </p>
+              {aiDrafts.map((draft, i) => {
+                const targetedInsight = insights.find(ins => ins.id === draft.primary_insight_id)
+                return (
+                  <div key={i} className="bg-white border border-purple-200 rounded-lg p-4 space-y-2.5">
+                    <p className="text-sm text-gray-700 leading-relaxed">{draft.recommendation}</p>
+
+                    {/* Targeted insight chip */}
+                    {targetedInsight && (
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                          Targets
+                        </span>
+                        <span className="text-xs text-gray-500 leading-snug">
+                          {targetedInsight.content.length > 80
+                            ? targetedInsight.content.slice(0, 80) + '…'
+                            : targetedInsight.content}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Link justification */}
+                    {draft.link_justification && (
+                      <p className="text-xs italic text-gray-400 leading-snug">{draft.link_justification}</p>
+                    )}
+
+                    {addedIndices.has(i) ? (
+                      <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
+                    ) : (
+                      <button
+                        onClick={() => addDraftRec(draft, i)}
+                        className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                      >
+                        + Add recommendation
+                      </button>
                     )}
                   </div>
-                )}
-              </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -348,7 +359,7 @@ export default function RecommendationsPhase({
           notes={notes}
           isEditor={isEditor}
           onClose={() => setSelected(null)}
-          onRefresh={() => { setSelected(null); onRefresh() }}
+          onRefresh={() => { onRefresh() }}
         />
       )}
     </div>

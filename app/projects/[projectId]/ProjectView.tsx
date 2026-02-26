@@ -63,7 +63,7 @@ export default function ProjectView({ projectId, currentUser }: Props) {
     const data = await res.json()
     if (res.ok) {
       const newPhase = data.current_phase as Phase
-      setViewingPhase(newPhase)
+      setViewingPhase(newPhase === 'complete' ? 'report' : newPhase)
       await fetchProject()
     } else {
       setAdvanceError(data.blockers || [data.error || 'Failed to advance phase'])
