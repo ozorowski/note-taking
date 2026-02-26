@@ -20,7 +20,7 @@ const EVIDENCE_TYPES: { type: EvidenceType; label: string; key: string; color: s
   { type: 'quote', label: 'Quote', key: 'Q', color: 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100', activeColor: 'bg-blue-500 text-white border-blue-500' },
   { type: 'observation', label: 'Observation', key: 'O', color: 'border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100', activeColor: 'bg-purple-500 text-white border-purple-500' },
   { type: 'pain_point', label: 'Pain Point', key: 'P', color: 'border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100', activeColor: 'bg-rose-500 text-white border-rose-500' },
-  { type: 'need', label: 'Need', key: 'N', color: 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100', activeColor: 'bg-amber-500 text-white border-amber-500' },
+  { type: 'need', label: 'Other', key: 'X', color: 'border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100', activeColor: 'bg-amber-500 text-white border-amber-500' },
 ]
 
 
@@ -32,6 +32,7 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
   const [sharing, setSharing] = useState(false)
   const [sharedMessage, setSharedMessage] = useState(false)
   const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [newNoteId, setNewNoteId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Focus textarea on mount
@@ -49,7 +50,7 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
     if (!content.trim()) return
     if (!selectedInterviewId) return
     setSaving(true)
-    await fetch('/api/notes', {
+    const res = await fetch('/api/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -60,6 +61,11 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
         visibility: 'private',
       }),
     })
+    if (res.ok) {
+      const note = await res.json()
+      setNewNoteId(note.id)
+      setTimeout(() => setNewNoteId(null), 800)
+    }
     setSaving(false)
     setContent('')
     textareaRef.current?.focus()
@@ -67,14 +73,14 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       saveNote()
       return
     }
     // Ctrl+Q/O/P/N to change evidence type
     if (e.ctrlKey || e.metaKey) {
-      const map: Record<string, EvidenceType> = { q: 'quote', o: 'observation', p: 'pain_point', n: 'need' }
+      const map: Record<string, EvidenceType> = { q: 'quote', o: 'observation', p: 'pain_point', x: 'need' }
       const t = map[e.key.toLowerCase()]
       if (t) {
         e.preventDefault()
@@ -202,7 +208,7 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
           </div>
 
           <div className="flex items-center justify-between pt-3 mt-1 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Enter for new line · Shift+Enter to save</p>
+            <p className="text-xs text-gray-400">Enter to save · Shift+Enter for new line</p>
             <button
               onClick={saveNote}
               disabled={!content.trim() || !selectedInterviewId || saving || !isEditor}
@@ -231,20 +237,30 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
               No notes yet — start capturing above
             </div>
           ) : (
-            <div className="space-y-2">
-              {myNotes.map(note => (
-                <NoteCard
-                  key={note.id}
-                  note={note}
-                  currentUserId={currentUserId}
-                  isEditor={isEditor}
-                  onEdit={() => setEditingNote(note)}
-                  onDelete={() => deleteNote(note.id)}
-                  onShare={() => shareNote(note.id)}
-                  showTimestamp
-                />
-              ))}
-            </div>
+            <>
+              <style>{`
+                @keyframes noteSlideIn {
+                  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+                  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+                }
+                .note-enter { animation: noteSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+              `}</style>
+              <div className="space-y-2">
+                {myNotes.map(note => (
+                  <div key={note.id} className={note.id === newNoteId ? 'note-enter' : ''}>
+                    <NoteCard
+                      note={note}
+                      currentUserId={currentUserId}
+                      isEditor={isEditor}
+                      onEdit={() => setEditingNote(note)}
+                      onDelete={() => deleteNote(note.id)}
+                      onShare={() => shareNote(note.id)}
+                      showTimestamp
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -45,7 +45,7 @@ export function canAdvancePhase(
   } else if (currentPhase === 'notes') {
     if (counts.note_count < MIN_NOTES)
       blockers.push(`Add at least ${MIN_NOTES} notes (${counts.note_count} so far)`)
-    if (counts.notes_linked_to_interview < counts.note_count)
+    if (counts.interview_count > 0 && counts.notes_linked_to_interview < counts.note_count)
       blockers.push(`All notes must be linked to an interview (${counts.note_count - counts.notes_linked_to_interview} unlinked)`)
     if (counts.private_note_count > 0)
       blockers.push(`Share all private notes with the team before proceeding (${counts.private_note_count} still private)`)

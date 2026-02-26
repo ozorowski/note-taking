@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const user = await getAuthedUser()
   if (!user) return unauthorized()
 
-  const { title, description, demo } = await request.json()
+  const { title, description, demo, url_import, notes: importedNotes, source_url } = await request.json()
   if (!title?.trim()) return badRequest('Title is required')
 
   if (demo) {
@@ -43,6 +43,29 @@ export async function POST(request: NextRequest) {
   )
   if (existing.rows.length > 0) {
     return badRequest('You already have a project with this name')
+  }
+
+  if (url_import && Array.isArray(importedNotes) && importedNotes.length > 0) {
+    // URL import: create project at 'notes' phase, bulk insert notes
+    const projectResult = await query(
+      `INSERT INTO projects (title, description, owner_id, demo, current_phase)
+       VALUES ($1, $2, $3, false, 'notes') RETURNING *`,
+      [title.trim(), description?.trim() || null, user.user_id]
+    )
+    const project = projectResult.rows[0]
+    await query(
+      `INSERT INTO project_memberships (project_id, user_id, role) VALUES ($1, $2, 'owner')`,
+      [project.id, user.user_id]
+    )
+    for (const note of importedNotes) {
+      if (!note.content?.trim()) continue
+      await query(
+        `INSERT INTO notes (project_id, content, created_by, evidence_type, visibility, source_type, source_url, source_author)
+         VALUES ($1,$2,$3,$4,'shared','url_import',$5,$6)`,
+        [project.id, note.content.trim(), user.user_id, note.evidence_type || null, source_url || null, note.author || null]
+      )
+    }
+    return NextResponse.json(project, { status: 201 })
   }
 
   const result = await query(

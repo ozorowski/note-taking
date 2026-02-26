@@ -16,18 +16,23 @@ interface Props {
 export default function NotesPhase({ currentUserId, notes, interviews, isEditor, onRefresh }: Props) {
   const [filterInterview, setFilterInterview] = useState('')
   const [filterTag, setFilterTag] = useState('')
+  const [filterSource, setFilterSource] = useState('')
   const [editingNote, setEditingNote] = useState<Note | null>(null)
 
   const allTags = [...new Set(notes.flatMap(n => n.tags ?? []))]
   const allInterviews = [...new Set(notes.map(n => n.interview_name).filter(Boolean))] as string[]
+  const hasImported = notes.some(n => n.source_type === 'url_import')
 
-  const filtered = notes.filter(n => {
-    if (filterInterview && n.interview_name !== filterInterview) return false
-    if (filterTag && !n.tags?.includes(filterTag)) return false
-    return true
-  })
+  const filtered = notes
+    .filter(n => {
+      if (filterInterview && n.interview_name !== filterInterview) return false
+      if (filterTag && !n.tags?.includes(filterTag)) return false
+      if (filterSource === 'imported' && n.source_type !== 'url_import') return false
+      return true
+    })
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
-  const hasFilter = filterInterview || filterTag
+  const hasFilter = filterInterview || filterTag || filterSource
 
   async function deleteNote(id: string) {
     await fetch(`/api/notes/${id}`, { method: 'DELETE' })
@@ -40,7 +45,9 @@ export default function NotesPhase({ currentUserId, notes, interviews, isEditor,
         <div className="mb-6">
           <h2 className="text-lg font-semibold">Notes</h2>
           <p className="text-sm text-gray-500 mt-0.5 mb-3">
-            Capture observations and quotes. Need at least 10 notes, all linked to an interview.
+            {hasImported
+              ? 'Imported notes are ready to cluster. Review, edit or delete before moving to Themes.'
+              : 'Capture observations and quotes. Need at least 10 notes, all linked to an interview.'}
           </p>
           <div className="flex items-center gap-2 justify-end">
             {allInterviews.length > 0 && (
@@ -71,8 +78,20 @@ export default function NotesPhase({ currentUserId, notes, interviews, isEditor,
                 ))}
               </select>
             )}
+            {hasImported && (
+              <button
+                onClick={() => setFilterSource(f => f === 'imported' ? '' : 'imported')}
+                className={`text-sm px-2.5 py-1.5 rounded-lg border transition-colors ${
+                  filterSource === 'imported'
+                    ? 'border-blue-400 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                Imported
+              </button>
+            )}
             <button
-              onClick={() => { setFilterInterview(''); setFilterTag('') }}
+              onClick={() => { setFilterInterview(''); setFilterTag(''); setFilterSource('') }}
               className={`text-gray-400 hover:text-gray-700 text-lg leading-none ${hasFilter ? 'visible' : 'invisible'}`}
               title="Clear filters"
             >
@@ -101,6 +120,7 @@ export default function NotesPhase({ currentUserId, notes, interviews, isEditor,
                 onEdit={() => setEditingNote(note)}
                 onDelete={() => deleteNote(note.id)}
                 showAuthor
+                showTimestamp
               />
             ))}
           </div>

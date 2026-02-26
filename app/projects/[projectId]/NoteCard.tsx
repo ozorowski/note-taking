@@ -6,7 +6,7 @@ export const EVIDENCE_BADGE: Record<string, { label: string; className: string }
   quote: { label: 'Quote', className: 'bg-blue-100 text-blue-700' },
   observation: { label: 'Observation', className: 'bg-purple-100 text-purple-700' },
   pain_point: { label: 'Pain Point', className: 'bg-rose-100 text-rose-700' },
-  need: { label: 'Need', className: 'bg-amber-100 text-amber-700' },
+  need: { label: 'Other', className: 'bg-amber-100 text-amber-700' },
 }
 
 interface NoteCardProps {
@@ -84,6 +84,14 @@ export default function NoteCard({
       {/* ── Content ─────────────────────────────────────── */}
       <p className="text-sm text-gray-800 leading-relaxed">{note.content}</p>
 
+      {/* ── Source attribution (url_import) ────────────── */}
+      {note.source_type === 'url_import' && (
+        <p className="text-[11px] text-gray-400 -mt-1 truncate">
+          {note.source_author && <span className="font-medium">{note.source_author} · </span>}
+          Imported
+        </p>
+      )}
+
       {/* ── Bottom row: evidence badge + private + author + timestamp ─ */}
       {(badge || (isPrivate && isOwn) || (showAuthor && note.creator_name) || showTimestamp) && (
         <div className="flex items-center gap-2 flex-wrap">
@@ -100,6 +108,8 @@ export default function NoteCard({
           )}
           {showTimestamp && (
             <span className="text-[11px] text-gray-300">
+              {new Date(note.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+              {' · '}
               {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}

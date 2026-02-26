@@ -367,7 +367,8 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
               </div>
             </div>
           ) : (
-            <div className="flex gap-4 p-4 items-start min-h-full">
+            <div className="flex gap-4 p-4 pr-0 items-start min-h-full">
+              <div className="flex gap-4 items-start pr-4">
               {themes.map(theme => {
                 const themeNotes = notesForTheme(theme.id)
                 const isOver = dragOverThemeId === theme.id
@@ -505,6 +506,7 @@ export default function ThemesPhase({ projectId, notes, themes, counts, isEditor
                   </div>
                 )
               })}
+              </div>
             </div>
           )}
         </div>

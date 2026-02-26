@@ -6,6 +6,17 @@ import EntityDrawer from '@/components/EntityDrawer'
 
 type InsightWithIds = Insight & { theme_ids?: string[] }
 
+interface InsightDraft {
+  content: string
+  root_cause: string | null
+  iqs_score: number | null
+  linked_theme_ids: string[]
+  link_rationale: Record<string, string>
+  supporting_note_ids: string[]
+  needs_new_theme: boolean
+  suggested_new_theme_name: string | null
+}
+
 interface Props {
   projectId: string
   insights: InsightWithIds[]
@@ -13,6 +24,18 @@ interface Props {
   notes: Note[]
   isEditor: boolean
   onRefresh: () => void
+}
+
+function IQSBadge({ score }: { score: number }) {
+  if (score >= 75) return (
+    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Strength {score}</span>
+  )
+  if (score >= 50) return (
+    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠ Strength {score}</span>
+  )
+  return (
+    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">⚠ Strength {score}</span>
+  )
 }
 
 export default function InsightsPhase({ projectId, insights, themes, notes, isEditor, onRefresh }: Props) {
@@ -24,13 +47,15 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   const [selected, setSelected] = useState<InsightWithIds | null>(null)
 
   const [newInsightThemeIds, setNewInsightThemeIds] = useState<string[]>([])
+  const [manualRootCause, setManualRootCause] = useState('')
 
   // AI generation state
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [selectedThemeIds, setSelectedThemeIds] = useState<string[]>([])
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiDrafts, setAiDrafts] = useState<string[]>([])
+  const [aiDrafts, setAiDrafts] = useState<InsightDraft[]>([])
   const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   async function addInsight(e: React.FormEvent) {
     e.preventDefault()
@@ -38,11 +63,13 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       ? `When ${structured.context.trim()}, ${structured.behaviour.trim()}, because ${structured.cause.trim()}, which leads to ${structured.impact.trim()}.`
       : content.trim()
     if (!finalContent.trim()) return
+    const rawRc = formMode === 'structured' ? structured.cause.trim() : manualRootCause.trim()
+    const rootCause = rawRc ? rawRc.charAt(0).toUpperCase() + rawRc.slice(1) : null
     setLoading(true)
     const res = await fetch('/api/insights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, content: finalContent }),
+      body: JSON.stringify({ project_id: projectId, content: finalContent, root_cause: rootCause }),
     })
     if (res.ok) {
       const insight = await res.json()
@@ -57,6 +84,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       )
       setContent('')
       setStructured({ context: '', behaviour: '', cause: '', impact: '' })
+      setManualRootCause('')
       setNewInsightThemeIds([])
       setAdding(false)
       onRefresh()
@@ -86,6 +114,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
     setAiLoading(true)
     setAiDrafts([])
     setAddedIndices(new Set())
+    setDraftError(null)
     const res = await fetch('/api/ai/draft-insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,31 +122,42 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
     })
     if (res.ok) {
       const data = await res.json()
-      setAiDrafts(data.drafts || (data.draft ? [data.draft] : []))
+      setAiDrafts(data.drafts || [])
     }
     setAiLoading(false)
   }
 
-  async function addDraftInsight(draft: string, index: number) {
+  async function addDraftInsight(draft: InsightDraft, index: number) {
+    setDraftError(null)
     const res = await fetch('/api/insights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, content: draft }),
+      body: JSON.stringify({
+        project_id: projectId,
+        content: draft.content,
+        root_cause: draft.root_cause,
+        iqs_score: draft.iqs_score,
+        supporting_note_ids: draft.supporting_note_ids.length > 0 ? draft.supporting_note_ids : null,
+      }),
     })
-    if (res.ok) {
-      const insight = await res.json()
-      await Promise.all(
-        selectedThemeIds.map(themeId =>
-          fetch(`/api/insights/${insight.id}/themes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme_id: themeId }),
-          })
-        )
-      )
-      setAddedIndices(prev => new Set([...prev, index]))
-      onRefresh()
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setDraftError(data.error || 'Failed to add insight — please try again')
+      return
     }
+    const insight = await res.json()
+    const themeIdsToLink = draft.linked_theme_ids.length > 0 ? draft.linked_theme_ids : selectedThemeIds
+    await Promise.all(
+      themeIdsToLink.map(themeId =>
+        fetch(`/api/insights/${insight.id}/themes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme_id: themeId }),
+        })
+      )
+    )
+    setAddedIndices(prev => new Set([...prev, index]))
+    onRefresh()
   }
 
   function closeAiPanel() {
@@ -157,10 +197,10 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-5">
           <h3 className="text-sm font-semibold text-purple-800 mb-1">Ask Tracey to draft insights</h3>
           <p className="text-xs text-purple-600 mb-0.5">
-            Pick themes → Tracey drafts 3 insights using the structured format:
+            Pick themes → Tracey generates one insight per causal mechanism:
           </p>
           <p className="text-xs text-purple-500 italic mb-4">
-            When [context], [participants] [behaviour], because [underlying cause], which leads to [impact].
+            When [context], [participants] [behaviour], because [single root cause], which leads to [impact].
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
             {themes.map(t => (
@@ -190,37 +230,83 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             >
               {aiLoading ? 'Tracey is thinking...' : `Ask Tracey to generate from ${selectedThemeIds.length} theme${selectedThemeIds.length !== 1 ? 's' : ''}`}
             </button>
-            <button
-              onClick={closeAiPanel}
-              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
-            >
+            <button onClick={closeAiPanel} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
               Close
             </button>
           </div>
+          {draftError && (
+            <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+              {draftError}
+            </div>
+          )}
           {aiDrafts.length > 0 && (
             <div className="space-y-3 border-t border-purple-200 pt-4">
               <p className="text-xs font-semibold text-purple-700">
                 Tracey drafted {aiDrafts.length} insight{aiDrafts.length !== 1 ? 's' : ''} — review and add:
               </p>
               {aiDrafts.map((draft, i) => (
-                <div key={i} className="bg-white border border-purple-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-700 leading-relaxed mb-3">{draft}</p>
+                <div key={i} className="bg-white border border-purple-200 rounded-lg p-4 space-y-2.5">
+                  <p className="text-sm text-gray-700 leading-relaxed">{draft.content}</p>
+
+                  {/* Needs new theme warning */}
+                  {draft.needs_new_theme && (
+                    <div className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                      ⚠ Doesn&apos;t fit selected themes well
+                      {draft.suggested_new_theme_name && (
+                        <> — suggests new theme: <strong>{draft.suggested_new_theme_name}</strong></>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Root cause pill */}
+                  {draft.root_cause && (
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                        Root cause
+                      </span>
+                      <span className="text-xs text-gray-600">{draft.root_cause}</span>
+                    </div>
+                  )}
+
+                  {/* IQS badge */}
+                  {draft.iqs_score != null && <IQSBadge score={draft.iqs_score} />}
+
+                  {/* Linked themes with rationale */}
+                  {draft.linked_theme_ids.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      {draft.linked_theme_ids.map(themeId => {
+                        const theme = themes.find(t => t.id === themeId)
+                        if (!theme) return null
+                        return (
+                          <div key={themeId}>
+                            <span className="inline-flex text-[10px] font-semibold px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+                              {theme.title}
+                            </span>
+                            {draft.link_rationale[themeId] && (
+                              <p className="text-[11px] text-gray-400 italic mt-0.5 ml-1">{draft.link_rationale[themeId]}</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Supporting notes count */}
+                  {draft.supporting_note_ids.length > 0 && (
+                    <p className="text-[10px] text-gray-400">
+                      Based on {draft.supporting_note_ids.length} note{draft.supporting_note_ids.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+
                   {addedIndices.has(i) ? (
                     <span className="text-xs text-green-600 font-medium">✓ Added to project</span>
                   ) : (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => addDraftInsight(draft, i)}
-                        className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                      >
-                        + Add insight
-                      </button>
-                      {selectedThemeIds.length > 0 && (
-                        <span className="text-xs text-purple-500">
-                          Themes will be linked automatically
-                        </span>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => addDraftInsight(draft, i)}
+                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                    >
+                      + Add insight
+                    </button>
                   )}
                 </div>
               ))}
@@ -299,6 +385,11 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
                   />
                 </div>
               </div>
+              {structured.cause && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  Root cause will be saved from the "Because" field: <span className="font-medium">{structured.cause.charAt(0).toUpperCase() + structured.cause.slice(1)}</span>
+                </p>
+              )}
               {(structured.context || structured.behaviour || structured.cause || structured.impact) && (
                 <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 leading-relaxed">
                   <span className="font-medium text-gray-400">Preview: </span>
@@ -307,7 +398,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
               )}
             </div>
           ) : (
-            <div>
+            <div className="space-y-2">
               <textarea
                 autoFocus
                 value={content}
@@ -316,6 +407,18 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 mb-1">
+                  Root cause <span className="font-normal text-gray-300">(optional — the "because" clause in 5–15 words)</span>
+                </label>
+                <input
+                  type="text"
+                  value={manualRootCause}
+                  onChange={e => setManualRootCause(e.target.value)}
+                  placeholder="e.g. value isn't visible upfront"
+                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
           )}
 
@@ -356,7 +459,7 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setContent(''); setStructured({ context: '', behaviour: '', cause: '', impact: '' }); setNewInsightThemeIds([]) }}
+              onClick={() => { setAdding(false); setContent(''); setStructured({ context: '', behaviour: '', cause: '', impact: '' }); setManualRootCause(''); setNewInsightThemeIds([]) }}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
             >
               Cancel
@@ -393,17 +496,18 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
                     </button>
                   )}
                 </div>
-                {linkedThemes.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {linkedThemes.map(t => (
+                <div className="flex items-center flex-wrap gap-1.5">
+                  {linkedThemes.length > 0 ? (
+                    linkedThemes.map(t => (
                       <span key={t.id} className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
                         {t.title}
                       </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-xs text-amber-500">⚠ No themes linked — click to link</span>
-                )}
+                    ))
+                  ) : (
+                    <span className="text-xs text-amber-500">⚠ No themes linked — click to link</span>
+                  )}
+                  {insight.iqs_score != null && <IQSBadge score={insight.iqs_score} />}
+                </div>
               </div>
             )
           })}

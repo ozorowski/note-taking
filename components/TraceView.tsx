@@ -24,7 +24,10 @@ export default function TraceView({ linkedInsights, themes, notes }: Props) {
             </div>
 
             {insightThemes.map(theme => {
-              const themeNotes = notes.filter(n => n.theme_ids?.includes(theme.id))
+              const supporting = insight.supporting_note_ids
+              const themeNotes = supporting?.length
+                ? notes.filter(n => supporting.includes(n.id) && n.theme_ids?.includes(theme.id))
+                : notes.filter(n => n.theme_ids?.includes(theme.id)).slice(0, 3)
 
               return (
                 <div key={theme.id} className="border-t border-green-100">
@@ -32,18 +35,17 @@ export default function TraceView({ linkedInsights, themes, notes }: Props) {
                     <span className="text-[10px] font-semibold text-purple-600 uppercase tracking-wide">Theme</span>
                     <span className="text-xs text-purple-800 ml-2">{theme.title}</span>
                   </div>
-                  {themeNotes.slice(0, 3).map(note => (
+                  {themeNotes.length > 0 ? themeNotes.map(note => (
                     <div key={note.id} className="border-t border-purple-50 pl-6 px-3 py-2">
                       <p className="text-xs text-gray-600 leading-relaxed">{note.content}</p>
                       {note.interview_name && (
                         <p className="text-[10px] text-blue-500 mt-0.5">{note.interview_name}</p>
                       )}
                     </div>
-                  ))}
-                  {themeNotes.length > 3 && (
-                    <p className="text-[11px] text-gray-400 pl-6 px-3 py-1.5">
-                      +{themeNotes.length - 3} more notes
-                    </p>
+                  )) : (
+                    <div className="border-t border-purple-50 pl-6 px-3 py-2">
+                      <p className="text-xs text-gray-400">No matching notes</p>
+                    </div>
                   )}
                 </div>
               )

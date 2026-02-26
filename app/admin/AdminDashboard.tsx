@@ -16,6 +16,8 @@ interface UserRow { id: string; name: string; email: string; created_at: string;
 interface ProjectRow { id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number }
 interface DayRow { day: string; count: number }
 
+interface DbSchemaRow { table_name: string; column_name: string; data_type: string; is_nullable: string }
+
 interface Props {
   userName: string
   totals: Totals
@@ -24,6 +26,8 @@ interface Props {
   users: UserRow[]
   projects: ProjectRow[]
   signupsByDay: DayRow[]
+  dbSchema: DbSchemaRow[]
+  migrations: string[]
 }
 
 type Tab = 'overview' | 'users' | 'projects' | 'architecture'
@@ -62,7 +66,7 @@ function fmt(d: string) {
 
 // ── Root component ─────────────────────────────────────────────────────────
 
-export default function AdminDashboard({ userName, totals, userStats, phases, users, projects, signupsByDay }: Props) {
+export default function AdminDashboard({ userName, totals, userStats, phases, users, projects, signupsByDay, dbSchema, migrations }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
 
   return (
@@ -92,7 +96,7 @@ export default function AdminDashboard({ userName, totals, userStats, phases, us
         {tab === 'overview'     && <OverviewTab totals={totals} userStats={userStats} phases={phases} signupsByDay={signupsByDay} />}
         {tab === 'users'        && <UsersTab users={users} userStats={userStats} />}
         {tab === 'projects'     && <ProjectsTab projects={projects} phases={phases} />}
-        {tab === 'architecture' && <ArchitectureTab />}
+        {tab === 'architecture' && <ArchitectureTab dbSchema={dbSchema} migrations={migrations} />}
       </main>
     </div>
   )
@@ -420,7 +424,31 @@ function ProjectsTab({ projects, phases }: { projects: ProjectRow[]; phases: Pha
 
 // ── Architecture tab ───────────────────────────────────────────────────────
 
-function ArchitectureTab() {
+// Abbreviate verbose Postgres type names for compact display
+function shortType(raw: string) {
+  const map: Record<string, string> = {
+    'character varying': 'varchar',
+    'timestamp with time zone': 'timestamptz',
+    'timestamp without time zone': 'timestamp',
+    'boolean': 'bool',
+    'integer': 'int',
+    'bigint': 'bigint',
+    'text': 'text',
+    'uuid': 'uuid',
+    'USER-DEFINED': 'enum',
+  }
+  return map[raw] ?? raw
+}
+
+function ArchitectureTab({ dbSchema, migrations }: { dbSchema: DbSchemaRow[]; migrations: string[] }) {
+  // Group schema rows by table
+  const tableMap = new Map<string, DbSchemaRow[]>()
+  for (const row of dbSchema) {
+    if (!tableMap.has(row.table_name)) tableMap.set(row.table_name, [])
+    tableMap.get(row.table_name)!.push(row)
+  }
+  const tables = Array.from(tableMap.entries()).sort(([a], [b]) => a.localeCompare(b))
+
   return (
     <div className="space-y-8">
 
@@ -435,7 +463,6 @@ function ArchitectureTab() {
             <ArchBox label="Pusher JS Client" detail="Real-time subscriptions, falls back to 15s polling" color="blue" />
           </ArchLayer>
 
-          {/* Arrow down */}
           <ArchArrow label="HTTPS / WebSocket" />
 
           {/* Server layer */}
@@ -446,8 +473,7 @@ function ArchitectureTab() {
             <ArchBox label="AI Routes" detail="Groq → Gemini → OpenAI (fallback chain)" color="purple" />
           </ArchLayer>
 
-          {/* Arrow down */}
-          <ArchArrow label="pg (PostgreSQL driver) · Pusher SDK · Resend SDK · HTTP" />
+          <ArchArrow label="pg (PostgreSQL driver) · Pusher SDK · Resend SDK · HTTP (Jina / Reddit JSON)" />
 
           {/* Data / services layer */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -455,7 +481,7 @@ function ArchitectureTab() {
               title="PostgreSQL"
               badge="Render DB"
               color="emerald"
-              items={['users', 'projects', 'interviews', 'notes', 'themes', 'insights', 'recommendations']}
+              items={[`${tables.length} tables`, `${migrations.length} migrations`, 'Raw SQL — no ORM']}
             />
             <ServiceBox
               title="Pusher Channels"
@@ -467,13 +493,13 @@ function ArchitectureTab() {
               title="AI APIs"
               badge="3-tier fallback"
               color="orange"
-              items={['Groq (primary)', 'Gemini (fallback)', 'OpenAI (tertiary)', 'Prompts: insight, theme, rec, summary']}
+              items={['Groq llama-3.3-70b (primary)', 'Gemini 2.0 Flash (fallback)', 'OpenAI gpt-4o-mini (tertiary)']}
             />
             <ServiceBox
               title="Resend"
               badge="Email"
               color="rose"
-              items={['Magic link auth', '15-min tokens', 'onboarding@resend.dev (dev)']}
+              items={['Magic link auth', '15-min tokens', 'Jina AI Reader (URL import)']}
             />
           </div>
         </div>
@@ -494,8 +520,8 @@ function ArchitectureTab() {
             ))}
           </div>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs text-gray-500">
-            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Interviews</span> — Add research participants. Gate: ≥1 interview to advance.</div>
-            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Capture</span> — Private note-taking per interview. Evidence types: Quote / Observation / Pain Point / Need.</div>
+            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Interviews</span> — Add research participants. Gate: ≥1 interview to advance (skipped for URL-imported projects).</div>
+            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Capture</span> — Private note-taking per interview. Evidence types: Quote / Observation / Pain Point / Other.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Notes</span> — Share captured notes with the team. Gate: all notes must be shared before advancing.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Themes</span> — AI-assisted clustering of notes into themes. Gate: ≥1 theme, all notes clustered.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Insights</span> — Synthesise themes into insights. Gate: ≥1 insight, all linked to themes.</div>
@@ -509,13 +535,13 @@ function ArchitectureTab() {
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Tech stack</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {[
-            { cat: 'Framework',    items: ['Next.js 15 (App Router)', 'React 18', 'TypeScript'] },
+            { cat: 'Framework',    items: ['Next.js 15 (App Router)', 'React 19', 'TypeScript'] },
             { cat: 'Styling',      items: ['Tailwind CSS', 'IBM Plex Mono (capture font)'] },
             { cat: 'Database',     items: ['PostgreSQL (Render)', 'pg driver', 'Raw SQL (no ORM)'] },
             { cat: 'Auth',         items: ['JWT (30d)', 'httpOnly cookie', 'Magic link via Resend', 'Guest (name-only)'] },
             { cat: 'Real-time',    items: ['Pusher Channels (eu)', '15s polling fallback'] },
-            { cat: 'AI',           items: ['Groq llama-3.3-70b', 'Gemini 2.0 Flash', 'OpenAI (tertiary)'] },
-            { cat: 'Email',        items: ['Resend', 'Magic link auth flow'] },
+            { cat: 'AI',           items: ['Groq llama-3.3-70b', 'Gemini 2.0 Flash', 'OpenAI gpt-4o-mini (tertiary)'] },
+            { cat: 'URL import',   items: ['Reddit JSON API (.json suffix)', 'Jina AI Reader (r.jina.ai)', 'AI evidence classification'] },
             { cat: 'Deployment',   items: ['Render.com (web service)', 'Render Managed Postgres', 'Auto-migrate on deploy'] },
           ].map(({ cat, items }) => (
             <div key={cat} className="bg-white border border-gray-200 rounded-xl p-4">
@@ -532,32 +558,39 @@ function ArchitectureTab() {
         </div>
       </div>
 
-      {/* DB schema summary */}
+      {/* Migrations — live from filesystem */}
       <div>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Database schema</p>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+          Migrations <span className="normal-case font-normal text-gray-300">({migrations.length} files · live)</span>
+        </p>
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <ol className="space-y-1">
+            {migrations.map((m, i) => (
+              <li key={m} className="flex items-center gap-3 text-xs">
+                <span className="w-5 text-right text-gray-300 font-mono flex-shrink-0">{i + 1}</span>
+                <span className="font-mono text-gray-700">{m}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+
+      {/* DB schema — live from information_schema */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+          Database schema <span className="normal-case font-normal text-gray-300">({tables.length} tables · live)</span>
+        </p>
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
-            {[
-              { table: 'users', cols: ['id', 'name', 'email?', 'password_hash?', 'is_guest', 'created_at'] },
-              { table: 'magic_link_tokens', cols: ['id', 'email', 'token', 'expires_at', 'used_at'] },
-              { table: 'projects', cols: ['id', 'title', 'description?', 'current_phase', 'owner_id', 'demo', 'executive_summary?'] },
-              { table: 'project_memberships', cols: ['id', 'project_id', 'user_id', 'role'] },
-              { table: 'project_invites', cols: ['id', 'project_id', 'token', 'role', 'expires_at'] },
-              { table: 'interviews', cols: ['id', 'project_id', 'participant_name', 'raw_notes?', 'created_by'] },
-              { table: 'notes', cols: ['id', 'project_id', 'interview_id?', 'content', 'evidence_type?', 'visibility', 'created_by'] },
-              { table: 'note_themes', cols: ['note_id', 'theme_id'] },
-              { table: 'themes', cols: ['id', 'project_id', 'title', 'description?', 'created_by'] },
-              { table: 'insights', cols: ['id', 'project_id', 'content', 'evidence_summary?', 'created_by'] },
-              { table: 'insight_themes', cols: ['insight_id', 'theme_id'] },
-              { table: 'recommendations', cols: ['id', 'project_id', 'content', 'rationale?', 'created_by'] },
-              { table: 'recommendation_insights', cols: ['recommendation_id', 'insight_id'] },
-              { table: 'project_activity', cols: ['id', 'project_id', 'user_id?', 'action', 'entity_type?', 'entity_id?'] },
-            ].map(({ table, cols }) => (
-              <div key={table} className="bg-gray-50 rounded-lg p-3">
-                <p className="font-semibold text-gray-700 font-mono mb-2">{table}</p>
+            {tables.map(([tableName, cols]) => (
+              <div key={tableName} className="bg-gray-50 rounded-lg p-3">
+                <p className="font-semibold text-gray-700 font-mono mb-2">{tableName}</p>
                 <ul className="space-y-0.5">
-                  {cols.map(c => (
-                    <li key={c} className="text-gray-500 font-mono text-[11px]">{c}</li>
+                  {cols.map(col => (
+                    <li key={col.column_name} className="text-gray-500 font-mono text-[11px] flex items-center gap-1">
+                      <span>{col.column_name}{col.is_nullable === 'YES' ? '?' : ''}</span>
+                      <span className="text-gray-300">{shortType(col.data_type)}</span>
+                    </li>
                   ))}
                 </ul>
               </div>

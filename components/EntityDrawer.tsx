@@ -4,6 +4,15 @@ import { useState } from 'react'
 import type { Insight, Recommendation, Theme, Note } from '@/lib/types'
 import TraceView from './TraceView'
 
+const IQS_DIMENSIONS = [
+  { label: 'Focused on one clear cause', desc: 'Does this insight describe one main reason behind the behaviour?', range: '0–25' },
+  { label: 'Describes a real behaviour', desc: 'Is it based on what people actually do, rather than a broad theme?', range: '0–20' },
+  { label: 'Clear cause and effect', desc: 'Is it obvious how the cause leads to the outcome?', range: '0–20' },
+  { label: 'Explains the impact', desc: 'Does it clearly describe what happens as a result?', range: '0–15' },
+  { label: 'Stays neutral', desc: 'Does it avoid jumping to a solution or recommendation?', range: '0–10' },
+  { label: 'Supported by evidence', desc: 'Is it grounded in multiple notes or participants?', range: '0–10' },
+]
+
 type EntityType = 'insight' | 'recommendation'
 
 type InsightWithIds = Insight & { theme_ids?: string[] }
@@ -34,11 +43,11 @@ export default function EntityDrawer({
   const [editing, setEditing] = useState(false)
   const [content, setContent] = useState(entity.content)
   const [secondary, setSecondary] = useState(
-    type === 'insight'
-      ? (entity as InsightWithIds).evidence_summary || ''
-      : (entity as RecommendationWithIds).rationale || ''
+    type === 'insight' ? '' : (entity as RecommendationWithIds).rationale || ''
   )
   const [saving, setSaving] = useState(false)
+  const [rootCause, setRootCause] = useState(type === 'insight' ? ((entity as InsightWithIds).root_cause || '') : '')
+  const [showInsightList, setShowInsightList] = useState(false)
 
   const isInsight = type === 'insight'
   const insight = entity as InsightWithIds
@@ -55,8 +64,12 @@ export default function EntityDrawer({
   async function save() {
     setSaving(true)
     const body: Record<string, unknown> = { content: content.trim() }
-    if (isInsight) body.evidence_summary = secondary.trim() || null
-    else body.rationale = secondary.trim() || null
+    if (isInsight) {
+      const rc = rootCause.trim()
+      body.root_cause = rc ? rc.charAt(0).toUpperCase() + rc.slice(1) : null
+    } else {
+      body.rationale = secondary.trim() || null
+    }
     const endpoint = isInsight ? `/api/insights/${entity.id}` : `/api/recommendations/${entity.id}`
     await fetch(endpoint, {
       method: 'PATCH',
@@ -140,32 +153,82 @@ export default function EntityDrawer({
             )}
           </div>
 
-          {/* Evidence summary / Rationale */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              {isInsight ? 'Evidence summary' : 'Rationale'}{' '}
-              <span className="font-normal text-gray-300">(optional)</span>
-            </label>
-            {editing ? (
-              <textarea
-                value={secondary}
-                onChange={e => setSecondary(e.target.value)}
-                rows={2}
-                placeholder={
-                  isInsight
-                    ? 'What patterns support this insight?'
-                    : 'Why is this the right recommendation?'
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              />
-            ) : (
-              secondary ? (
-                <p className="text-sm text-gray-600 leading-relaxed">{secondary}</p>
+          {/* Root cause (insights only) */}
+          {isInsight && (
+            <div>
+              {editing ? (
+                <>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    Root cause <span className="font-normal text-gray-300">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={rootCause}
+                    onChange={e => setRootCause(e.target.value)}
+                    placeholder="e.g. value isn't visible upfront"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </>
+              ) : insight.root_cause ? (
+                <div className="border-l-2 border-amber-400 pl-3 py-1">
+                  <p className="text-xs font-semibold text-gray-400 mb-0.5">Root cause</p>
+                  <p className="text-sm text-gray-700">{insight.root_cause}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {/* IQS badge with tooltip (insights only, view mode) */}
+          {isInsight && !editing && insight.iqs_score != null && (() => {
+            const score = insight.iqs_score!
+            const color = score >= 75 ? 'bg-green-100 text-green-700' : score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+            const label = `${score < 75 ? '⚠ ' : ''}Strength ${score}`
+            return (
+              <div className="relative group inline-flex items-center gap-1.5">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{label}</span>
+                <span className="text-gray-400 text-[13px] cursor-help leading-none select-none">ⓘ</span>
+                <div className="absolute top-full left-0 mt-2 w-80 bg-gray-900 text-white text-xs rounded-lg p-3 hidden group-hover:block z-20 shadow-xl pointer-events-none">
+                  <p className="font-semibold mb-1">Insight strength</p>
+                  <p className="text-gray-400 mb-2.5 leading-relaxed">A quick check of how clear and well-supported this insight is.</p>
+                  <div className="space-y-2">
+                    {IQS_DIMENSIONS.map(({ label: dim, desc, range }) => (
+                      <div key={dim}>
+                        <div className="flex justify-between text-gray-300">
+                          <span>{dim}</span>
+                          <span className="text-gray-500 ml-4 flex-shrink-0">{range}</span>
+                        </div>
+                        <p className="text-gray-500 text-[10px] leading-snug mt-0.5">{desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Rationale (recommendations only) */}
+          {!isInsight && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                Rationale <span className="font-normal text-gray-300">(optional)</span>
+              </label>
+              {editing ? (
+                <textarea
+                  value={secondary}
+                  onChange={e => setSecondary(e.target.value)}
+                  rows={2}
+                  placeholder="Why is this the right recommendation?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
               ) : (
-                <p className="text-sm text-gray-300 italic">Not yet written</p>
-              )
-            )}
-          </div>
+                secondary ? (
+                  <p className="text-sm text-gray-600 leading-relaxed">{secondary}</p>
+                ) : (
+                  <p className="text-sm text-gray-300 italic">Not yet written</p>
+                )
+              )}
+            </div>
+          )}
 
           {/* Linked themes (insights only) */}
           {isInsight && (
@@ -219,15 +282,13 @@ export default function EntityDrawer({
                 {linkedInsights.map(ins => (
                   <span
                     key={ins.id}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs"
+                    className="flex items-start gap-1 px-2.5 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs"
                   >
-                    <span className="flex-1 leading-relaxed">
-                      {ins.content.length > 80 ? ins.content.slice(0, 80) + '...' : ins.content}
-                    </span>
+                    <span className="flex-1 leading-relaxed">{ins.content}</span>
                     {isEditor && (
                       <button
                         onClick={() => unlinkInsight(ins.id)}
-                        className="text-green-400 hover:text-red-500 ml-1 flex-shrink-0 leading-none"
+                        className="text-green-400 hover:text-red-500 ml-1 flex-shrink-0 leading-none mt-0.5"
                       >
                         ×
                       </button>
@@ -239,18 +300,32 @@ export default function EntityDrawer({
                 )}
               </div>
               {isEditor && availableInsights.length > 0 && (
-                <select
-                  value=""
-                  onChange={e => e.target.value && linkInsight(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 max-w-full"
-                >
-                  <option value="">+ Link an insight</option>
-                  {availableInsights.map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.content.length > 60 ? i.content.slice(0, 60) + '...' : i.content}
-                    </option>
-                  ))}
-                </select>
+                showInsightList ? (
+                  <div className="space-y-1.5">
+                    {availableInsights.map(i => (
+                      <button
+                        key={i.id}
+                        onClick={() => { linkInsight(i.id); setShowInsightList(false) }}
+                        className="w-full text-left text-xs text-gray-600 border border-gray-200 rounded-lg px-2.5 py-2 hover:border-green-400 hover:bg-green-50 hover:text-green-700 transition-colors leading-relaxed"
+                      >
+                        {i.content}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setShowInsightList(false)}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowInsightList(true)}
+                    className="text-xs text-gray-500 hover:text-green-700 border border-dashed border-gray-200 rounded-lg px-3 py-1.5 w-full text-left hover:border-green-300 transition-colors"
+                  >
+                    + Link an insight
+                  </button>
+                )
               )}
             </div>
           )}
@@ -269,11 +344,8 @@ export default function EntityDrawer({
                 onClick={() => {
                   setEditing(false)
                   setContent(entity.content)
-                  setSecondary(
-                    type === 'insight'
-                      ? (entity as InsightWithIds).evidence_summary || ''
-                      : (entity as RecommendationWithIds).rationale || ''
-                  )
+                  setSecondary(type === 'insight' ? '' : (entity as RecommendationWithIds).rationale || '')
+                  setRootCause(isInsight ? (insight.root_cause || '') : '')
                 }}
                 className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
               >

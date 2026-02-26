@@ -93,7 +93,7 @@ async function seedDemoData(client: any, projectId: string, userId: string) {
   }
 
   // ── 40 notes spread across 5 participants ──────────────────────────────────
-  // evidence_type: quote | observation | pain_point | need
+  // evidence_type: quote | observation | pain_point | need  (displayed as "Other" in UI)
   // visibility: 'shared' (demo starts at Themes phase — all notes already shared)
   const notesData: { content: string; i: number; evidence_type: string }[] = [
     // Emma Thompson (i=0) — 8 notes
