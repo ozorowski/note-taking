@@ -45,7 +45,7 @@ export default async function ProjectsPage() {
           <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
             <div className="text-4xl mb-4">🔬</div>
             <h2 className="text-lg font-semibold mb-2">No projects yet</h2>
-            <p className="text-gray-500 text-sm mb-6">Start with a blank project or load the demo to see how Trace works.</p>
+            <p className="text-gray-500 text-sm mb-6">Capture notes from user interviews, surface patterns, and synthesise them into insights and recommendations.</p>
             <Link href="/projects/new" className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
               Create your first project
             </Link>
