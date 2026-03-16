@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSetting } from '@/lib/settings'
 import { query } from '@/lib/db'
 import { verifyToken } from '@/lib/auth'
 import { cookies } from 'next/headers'
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest) {
   const card = cardResult.rows[0]
   const text = `Title: ${card.title}\n\nDescription: ${card.description || 'No description'}`
 
+  const openaiKey = await getSetting('OPENAI_API_KEY')
   let summary: string
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!openaiKey) {
     // Stub: no API key set
     summary = `[AI stub] Summary of "${card.title}": This card discusses ${card.title.toLowerCase()}. Add your OPENAI_API_KEY to .env.local to get real AI summaries.`
   } else {
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
