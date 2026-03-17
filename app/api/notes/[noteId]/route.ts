@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole, logActivity } from '@/lib/api-helpers'
 import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ noteId: string }> }
@@ -42,7 +42,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(note.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { content, interview_id, visibility, evidence_type } = await request.json()
+  const body = await request.json()
+  const { content, interview_id, visibility, evidence_type } = body
+  const guideQuestionChanged = 'guide_question_id' in body
+  const guideQuestionValue = body.guide_question_id || null
+  const captureGroupChanged = 'capture_group_id' in body
+  const removingFromGroup = captureGroupChanged && body.capture_group_id === null
+  const settingGroup = captureGroupChanged && body.capture_group_id !== null
+  const newGroupId: string | null = settingGroup ? body.capture_group_id : null
+  const oldGroupId: string | null = removingFromGroup ? (note.capture_group_id ?? null) : null
 
   // visibility and evidence_type can only be changed by the note creator
   if ((visibility !== undefined || evidence_type !== undefined) && note.created_by !== user.user_id) {
@@ -55,11 +63,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
          interview_id = COALESCE($2, interview_id),
          visibility = COALESCE($3, visibility),
          evidence_type = COALESCE($4, evidence_type),
+         guide_question_id = CASE WHEN $5 THEN $6::uuid ELSE guide_question_id END,
+         capture_group_id = CASE WHEN $8 THEN NULL WHEN $9 THEN $10::uuid ELSE capture_group_id END,
          updated_at = NOW()
-     WHERE id = $5 RETURNING *`,
-    [content?.trim() || null, interview_id !== undefined ? interview_id : null, visibility || null, evidence_type || null, noteId]
+     WHERE id = $7 RETURNING *`,
+    [content?.trim() || null, interview_id !== undefined ? interview_id : null, visibility || null, evidence_type || null, guideQuestionChanged, guideQuestionValue, noteId, removingFromGroup, settingGroup, newGroupId]
   )
+
+  // If removing from group, dissolve the group when ≤1 note remains
+  if (oldGroupId) {
+    const { rows } = await query(
+      `SELECT COUNT(*) AS cnt FROM notes WHERE capture_group_id = $1`,
+      [oldGroupId]
+    )
+    if (parseInt(rows[0].cnt) <= 1) {
+      await query(`DELETE FROM capture_groups WHERE id = $1`, [oldGroupId])
+    }
+  }
+
   await broadcastProjectUpdate(note.project_id)
+  await logActivity(note.project_id, user.user_id, 'edited', 'note', noteId)
   return NextResponse.json(result.rows[0])
 }
 
@@ -71,7 +94,18 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!note) return notFound()
   const role = await getProjectRole(note.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
+  const deletedGroupId: string | null = note.capture_group_id ?? null
   await query('DELETE FROM notes WHERE id = $1', [noteId])
+  // Dissolve group if ≤1 note remains after deletion
+  if (deletedGroupId) {
+    const { rows } = await query(
+      `SELECT COUNT(*) AS cnt FROM notes WHERE capture_group_id = $1`,
+      [deletedGroupId]
+    )
+    if (parseInt(rows[0].cnt) <= 1) {
+      await query(`DELETE FROM capture_groups WHERE id = $1`, [deletedGroupId])
+    }
+  }
   await broadcastProjectUpdate(note.project_id)
   return NextResponse.json({ success: true })
 }

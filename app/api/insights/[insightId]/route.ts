@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole, logActivity } from '@/lib/api-helpers'
 import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ insightId: string }> }
@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     [content?.trim() || null, evidence_summary !== undefined ? evidence_summary?.trim() ?? null : null, root_cause !== undefined ? root_cause?.trim() ?? null : null, insightId]
   )
   await broadcastProjectUpdate(insight.project_id)
+  await logActivity(insight.project_id, user.user_id, 'edited', 'insight', insightId)
   return NextResponse.json(result.rows[0])
 }
 

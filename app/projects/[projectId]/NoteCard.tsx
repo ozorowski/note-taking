@@ -18,6 +18,14 @@ interface NoteCardProps {
   onShare?: () => void
   showTimestamp?: boolean
   showAuthor?: boolean
+  showGuideQuestion?: boolean
+  showId?: boolean
+  /** When true, shows hover action icons (edit/delete/share). Used by CapturePhase only. */
+  showActions?: boolean
+  /** Nudges card content right on hover to make room for a selection checkbox.
+   *  Requires a `group/note` ancestor. */
+  selectNudge?: boolean
+  isSelected?: boolean
 }
 
 export default function NoteCard({
@@ -29,21 +37,34 @@ export default function NoteCard({
   onShare,
   showTimestamp,
   showAuthor,
+  showGuideQuestion,
+  showId,
+  showActions,
+  selectNudge,
+  isSelected,
 }: NoteCardProps) {
   const badge = note.evidence_type ? EVIDENCE_BADGE[note.evidence_type] : null
   const isPrivate = note.visibility === 'private'
   const isOwn = note.created_by === currentUserId
 
-  const hasActions = isEditor && (onEdit || onDelete || (onShare && isPrivate && isOwn))
+  const hasActions = showActions && isEditor && (onEdit || onDelete || (onShare && isPrivate && isOwn))
 
   return (
-    <div className="relative bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-2.5 group">
-      {/* ── Actions — absolute top-right, hover only ──────── */}
+    <div
+      className={[
+        'relative bg-white border rounded-xl p-4 flex flex-col gap-2.5 group transition-all',
+        isSelected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200',
+        !showActions && onEdit ? 'cursor-pointer hover:border-blue-400 hover:ring-1 hover:ring-blue-400' : '',
+        selectNudge ? (isSelected ? 'pl-[52px]' : 'group-hover/note:pl-[52px]') : '',
+      ].join(' ')}
+      onClick={!showActions && onEdit ? onEdit : undefined}
+    >
+      {/* ── Actions — only in CapturePhase (showActions=true) ─── */}
       {hasActions && (
         <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {onShare && isPrivate && isOwn && (
             <button
-              onClick={onShare}
+              onClick={e => { e.stopPropagation(); onShare() }}
               className="text-[11px] text-gray-300 hover:text-emerald-600 whitespace-nowrap transition-colors"
               title="Share with team"
             >
@@ -52,7 +73,7 @@ export default function NoteCard({
           )}
           {onEdit && (
             <button
-              onClick={onEdit}
+              onClick={e => { e.stopPropagation(); onEdit() }}
               className="text-gray-300 hover:text-blue-500 transition-colors"
               title="Edit note"
             >
@@ -64,7 +85,7 @@ export default function NoteCard({
           )}
           {onDelete && (
             <button
-              onClick={() => window.confirm('Delete this note?') && onDelete()}
+              onClick={e => { e.stopPropagation(); window.confirm('Delete this note?') && onDelete() }}
               className="text-gray-300 hover:text-red-500 text-xl leading-none transition-colors"
               title="Delete note"
             >
@@ -74,15 +95,48 @@ export default function NoteCard({
         </div>
       )}
 
-      {/* ── Interview label (top) ─────────────────────────── */}
-      {note.interview_name && (
-        <span className="text-xs text-blue-600 bg-blue-50 rounded-full px-2.5 py-0.5 self-start">
-          {note.interview_name}
-        </span>
+      {/* ── Top row: ID left, author + timestamp right (or left when no ID) ── */}
+      {(showId && note.display_number || (showAuthor && note.creator_name) || showTimestamp) && (
+        <div className="flex items-center justify-between gap-2">
+          {showId && note.display_number ? (
+            <>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                Note {note.display_number}
+              </span>
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-300 shrink-0">
+                {showAuthor && note.creator_name && (
+                  <span>{note.creator_name}</span>
+                )}
+                {showTimestamp && (
+                  <span>
+                    {showAuthor && note.creator_name && '· '}
+                    {new Date(note.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                    {' · '}
+                    {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-300">
+              {showAuthor && note.creator_name && (
+                <span>{note.creator_name}</span>
+              )}
+              {showTimestamp && (
+                <span>
+                  {showAuthor && note.creator_name && '· '}
+                  {new Date(note.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                  {' · '}
+                  {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ── Content ─────────────────────────────────────── */}
-      <p className="text-sm text-gray-800 leading-relaxed">{note.content}</p>
+      {/* ── Content ─────────────────────────────────────────── */}
+      <p className="text-sm text-gray-800 leading-relaxed break-words">{note.content}</p>
 
       {/* ── Source attribution (url_import) ────────────── */}
       {note.source_type === 'url_import' && (
@@ -92,26 +146,29 @@ export default function NoteCard({
         </p>
       )}
 
-      {/* ── Bottom row: evidence badge + private + author + timestamp ─ */}
-      {(badge || (isPrivate && isOwn) || (showAuthor && note.creator_name) || showTimestamp) && (
+      {/* ── Bottom row ─────────────────────────────────────── */}
+      {(note.interview_name || badge || (showGuideQuestion && note.guide_question_text) || (isPrivate && isOwn)) && (
         <div className="flex items-center gap-2 flex-wrap">
+          {note.interview_name && (
+            <span className="text-[11px] text-blue-600 bg-blue-50 rounded-full px-2 py-0.5 truncate max-w-[160px]" title={note.interview_name}>
+              {note.interview_name}
+            </span>
+          )}
           {badge && (
             <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.className}`}>
               {badge.label}
             </span>
           )}
+          {showGuideQuestion && note.guide_question_text && (
+            <span
+              className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 truncate max-w-[180px]"
+              title={note.guide_question_text}
+            >
+              {note.guide_question_text}
+            </span>
+          )}
           {isPrivate && isOwn && (
             <span className="text-[11px] text-gray-400">🔒 private</span>
-          )}
-          {showAuthor && note.creator_name && (
-            <span className="text-[11px] text-gray-400">{note.creator_name}</span>
-          )}
-          {showTimestamp && (
-            <span className="text-[11px] text-gray-300">
-              {new Date(note.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
-              {' · '}
-              {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
           )}
         </div>
       )}

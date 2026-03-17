@@ -15,9 +15,13 @@ export async function POST(request: NextRequest) {
     ? supporting_note_ids.filter((id): id is string => typeof id === 'string')
     : null
 
+  const { rows: [{ next_num }] } = await query(
+    `SELECT COALESCE(MAX(display_number), 0) + 1 AS next_num FROM insights WHERE project_id = $1`,
+    [project_id]
+  )
   const result = await query(
-    `INSERT INTO insights (project_id, content, evidence_summary, root_cause, iqs_score, supporting_note_ids, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [project_id, content.trim(), evidence_summary?.trim() || null, root_cause?.trim() || null, iqs_score ?? null, noteIds, user.user_id]
+    `INSERT INTO insights (project_id, content, evidence_summary, root_cause, iqs_score, supporting_note_ids, created_by, display_number) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [project_id, content.trim(), evidence_summary?.trim() || null, root_cause?.trim() || null, iqs_score ?? null, noteIds, user.user_id, next_num]
   )
   await logActivity(project_id, user.user_id, 'created insight', 'insight', result.rows[0].id)
   return NextResponse.json(result.rows[0], { status: 201 })

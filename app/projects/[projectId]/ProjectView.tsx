@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import type { User, Phase } from '@/lib/types'
 import { canAdvancePhase, nextPhase } from '@/lib/phases'
@@ -19,18 +19,25 @@ import ReportView from './ReportView'
 interface Props {
   projectId: string
   currentUser: User
+  captureGroupingEnabled?: boolean
+  consentReminderEnabled?: boolean
+  analysisAnonymisationEnabled?: boolean
 }
 
-export default function ProjectView({ projectId, currentUser }: Props) {
+export default function ProjectView({ projectId, currentUser, captureGroupingEnabled = false, consentReminderEnabled = false, analysisAnonymisationEnabled = false }: Props) {
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [viewingPhase, setViewingPhase] = useState<Phase | 'report' | null>(null)
   const [advancing, setAdvancing] = useState(false)
   const [advanceError, setAdvanceError] = useState<string[]>([])
   const [showMembersModal, setShowMembersModal] = useState(false)
+  const [reverting, setReverting] = useState(false)
 
+  const fetchGenRef = useRef(0)
   const fetchProject = useCallback(async () => {
+    const myGen = ++fetchGenRef.current
     const res = await fetch(`/api/projects/${projectId}`)
+    if (fetchGenRef.current !== myGen) return   // a newer fetch already started — discard stale response
     if (res.ok) {
       const data = await res.json()
       setProject(data)
@@ -71,6 +78,17 @@ export default function ProjectView({ projectId, currentUser }: Props) {
     setAdvancing(false)
   }
 
+  async function revertPhase() {
+    if (!confirm('This will remove the Research Summary and return the project to editing mode. Continue?')) return
+    setReverting(true)
+    const res = await fetch(`/api/projects/${projectId}/revert`, { method: 'POST' })
+    if (res.ok) {
+      setViewingPhase('recommendations')
+      await fetchProject()
+    }
+    setReverting(false)
+  }
+
   if (loading || !project || !viewingPhase) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -80,9 +98,24 @@ export default function ProjectView({ projectId, currentUser }: Props) {
   }
 
   const isOwner = project.role === 'owner'
-  const isEditor = project.role === 'owner' || project.role === 'editor'
   const currentPhase: Phase = project.current_phase
   const isComplete = currentPhase === 'complete'
+  // Lock all editing while the research summary is finalised
+  const isEditor = (project.role === 'owner' || project.role === 'editor') && !isComplete
+  // Report AI generation (archetypes, executive summary) is always allowed for owners/editors
+  const canEditReport = project.role === 'owner' || project.role === 'editor'
+
+  // Build anonymisation map: interview_id → "Participant N" (using stable display_number)
+  const anonMap = new Map<string, string>(
+    (project.interviews ?? []).map((iv: any) => [iv.id, `Participant ${iv.display_number ?? '?'}`])
+  )
+  // Notes with participant names replaced — used in all analysis phases (not Capture)
+  const anonNotes = analysisAnonymisationEnabled
+    ? (project.notes ?? []).map((n: any) => ({
+        ...n,
+        interview_name: n.interview_id ? (anonMap.get(n.interview_id) ?? n.interview_name) : n.interview_name,
+      }))
+    : (project.notes ?? [])
 
   // Can the current phase be advanced?
   const { canAdvance, blockers } = isComplete
@@ -183,7 +216,7 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             >
               {advancing
                 ? 'Advancing...'
-                : `Proceed to ${nextPhase(currentPhase) === 'complete' ? 'synthesis complete' : nextPhase(currentPhase)} →`}
+                : nextPhase(currentPhase) === 'complete' ? 'Complete synthesis and create report →' : `Proceed to ${nextPhase(currentPhase)} →`}
             </button>
           </div>
         </div>
@@ -194,14 +227,25 @@ export default function ProjectView({ projectId, currentUser }: Props) {
         <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <p className="text-sm text-emerald-700 font-medium">
-              Synthesis complete — all phases finished.
+              Synthesis complete — all phases finished. Project is read-only.
             </p>
-            <button
-              onClick={() => setViewingPhase('report')}
-              className="text-sm text-emerald-700 font-medium underline hover:no-underline flex-shrink-0"
-            >
-              View Research Summary →
-            </button>
+            <div className="flex items-center gap-4 flex-shrink-0">
+              {isOwner && (
+                <button
+                  onClick={revertPhase}
+                  disabled={reverting}
+                  className="text-sm text-emerald-600 hover:text-emerald-800 disabled:opacity-40"
+                >
+                  {reverting ? 'Reverting…' : '↩ Continue editing'}
+                </button>
+              )}
+              <button
+                onClick={() => setViewingPhase('report')}
+                className="text-sm text-emerald-700 font-medium underline hover:no-underline"
+              >
+                View Research Summary →
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -213,6 +257,8 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             projectId={projectId}
             interviews={project.interviews}
             isEditor={isEditor}
+            hasGuide={project.has_guide ?? false}
+            guideQuestions={project.guide_questions ?? []}
             onRefresh={fetchProject}
           />
         )}
@@ -223,25 +269,32 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             interviews={project.interviews}
             notes={project.notes}
             isEditor={isEditor}
+            guideQuestions={project.guide_questions ?? []}
+            consentReminderEnabled={consentReminderEnabled}
             onRefresh={fetchProject}
           />
         )}
         {viewingPhase === 'notes' && (
           <NotesPhase
+            projectId={projectId}
+            captureGroupingEnabled={captureGroupingEnabled}
             currentUserId={currentUser.id}
-            notes={project.notes}
+            notes={anonNotes}
             interviews={project.interviews}
             isEditor={isEditor}
+            guideQuestions={project.guide_questions ?? []}
+            anonymisationEnabled={analysisAnonymisationEnabled}
             onRefresh={fetchProject}
           />
         )}
         {viewingPhase === 'themes' && (
           <ThemesPhase
             projectId={projectId}
-            notes={project.notes}
+            notes={anonNotes}
             themes={project.themes}
             counts={project.counts}
             isEditor={isEditor}
+            guideQuestions={project.guide_questions ?? []}
             onRefresh={fetchProject}
           />
         )}
@@ -250,7 +303,7 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             projectId={projectId}
             insights={project.insights}
             themes={project.themes}
-            notes={project.notes}
+            notes={anonNotes}
             isEditor={isEditor}
             onRefresh={fetchProject}
           />
@@ -261,15 +314,15 @@ export default function ProjectView({ projectId, currentUser }: Props) {
             recommendations={project.recommendations}
             insights={project.insights}
             themes={project.themes}
-            notes={project.notes}
+            notes={anonNotes}
             isEditor={isEditor}
             onRefresh={fetchProject}
           />
         )}
         {viewingPhase === 'report' && (
           <ReportView
-            project={project}
-            isEditor={isEditor}
+            project={analysisAnonymisationEnabled ? { ...project, notes: anonNotes } : project}
+            isEditor={canEditReport}
             onRefresh={fetchProject}
           />
         )}

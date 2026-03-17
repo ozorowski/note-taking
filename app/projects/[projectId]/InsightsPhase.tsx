@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Insight, Theme, Note } from '@/lib/types'
 import EntityDrawer from '@/components/EntityDrawer'
+import TraceyModal from '@/components/TraceyModal'
 
 type InsightWithIds = Insight & { theme_ids?: string[] }
 
@@ -56,6 +57,11 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   const [aiDrafts, setAiDrafts] = useState<InsightDraft[]>([])
   const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
   const [draftError, setDraftError] = useState<string | null>(null)
+  const [aiProvider, setAiProvider] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/ai/provider').then(r => r.json()).then(d => setAiProvider(d.provider)).catch(() => {})
+  }, [])
 
   async function addInsight(e: React.FormEvent) {
     e.preventDefault()
@@ -120,9 +126,11 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId, theme_ids: selectedThemeIds }),
     })
+    const data = await res.json()
     if (res.ok) {
-      const data = await res.json()
       setAiDrafts(data.drafts || [])
+    } else {
+      setDraftError(data.error || 'AI unavailable — try again later')
     }
     setAiLoading(false)
   }
@@ -168,6 +176,8 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
   }
 
   return (
+    <>
+    {aiLoading && <TraceyModal message={`Drafting insights from your data…${aiProvider ? ` · ${aiProvider}` : ''}`} />}
     <div className="max-w-5xl mx-auto px-6 py-8">
       <div className="mb-6">
         <h2 className="text-lg font-semibold">Insights</h2>
@@ -203,6 +213,19 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             When [context], [participants] [behaviour], because [single root cause], which leads to [impact].
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
+            {themes.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  selectedThemeIds.length === themes.length
+                    ? setSelectedThemeIds([])
+                    : setSelectedThemeIds(themes.map(t => t.id))
+                }
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-purple-200 bg-white text-purple-500 hover:border-purple-400 transition-colors"
+              >
+                {selectedThemeIds.length === themes.length ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
             {themes.map(t => (
               <button
                 key={t.id}
@@ -482,20 +505,15 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
             return (
               <div
                 key={insight.id}
-                className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:shadow-md transition-shadow group"
-                onClick={() => setSelected(insight)}
+                className={`bg-white border border-gray-200 rounded-xl p-5 transition-all ${isEditor ? 'cursor-pointer hover:border-blue-400 hover:ring-1 hover:ring-blue-400' : ''}`}
+                onClick={isEditor ? () => setSelected(insight) : undefined}
               >
-                <div className="flex items-start gap-2 mb-3">
-                  <p className="flex-1 text-sm text-gray-800 leading-relaxed">{insight.content}</p>
-                  {isEditor && (
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteInsight(insight.id) }}
-                      className="text-gray-200 hover:text-red-500 text-xl leading-none opacity-0 group-hover:opacity-100 flex-shrink-0"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
+                {insight.display_number && (
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-2">
+                    Insight {insight.display_number}
+                  </span>
+                )}
+                <p className="text-sm text-gray-800 leading-relaxed mb-3">{insight.content}</p>
                 <div className="flex items-center flex-wrap gap-1.5">
                   {linkedThemes.length > 0 ? (
                     linkedThemes.map(t => (
@@ -523,10 +541,13 @@ export default function InsightsPhase({ projectId, insights, themes, notes, isEd
           insights={insights}
           notes={notes}
           isEditor={isEditor}
+          initialEditing={true}
           onClose={() => setSelected(null)}
           onRefresh={handleDrawerRefresh}
+          onDelete={() => deleteInsight(selected.id)}
         />
       )}
     </div>
+    </>
   )
 }

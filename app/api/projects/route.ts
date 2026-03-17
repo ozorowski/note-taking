@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
   if (!user) return unauthorized()
 
   const { title, description, demo, url_import, notes: importedNotes, source_url } = await request.json()
-  if (!title?.trim()) return badRequest('Title is required')
 
   if (demo) {
     try {
@@ -33,6 +32,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create project' }, { status: 500 })
     }
   }
+
+  if (!title?.trim()) return badRequest('Title is required')
 
   // Check for duplicate title (case-insensitive) among this user's projects
   const existing = await query(

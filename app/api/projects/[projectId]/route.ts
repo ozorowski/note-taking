@@ -12,28 +12,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const role = await getProjectRole(projectId, user.user_id)
   if (!role) return notFound()
 
-  const [projRes, membersRes, interviewsRes, notesRes, themesRes, insightsRes, recsRes, counts] =
+  const [projRes, membersRes, interviewsRes, notesRes, themesRes, insightsRes, recsRes, counts, guideQsRes] =
     await Promise.all([
       query('SELECT * FROM projects WHERE id = $1', [projectId]),
       query(`SELECT u.id, u.name, pm.role FROM project_memberships pm JOIN users u ON u.id = pm.user_id WHERE pm.project_id = $1`, [projectId]),
-      query('SELECT * FROM interviews WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
+      query(`SELECT iv.*, u.name AS creator_name FROM interviews iv LEFT JOIN users u ON u.id = iv.created_by WHERE iv.project_id = $1 ORDER BY iv.created_at ASC`, [projectId]),
       query(`SELECT n.*, COALESCE(array_agg(nt.tag) FILTER (WHERE nt.tag IS NOT NULL),'{}') AS tags,
                COALESCE(array_agg(nth.theme_id::text) FILTER (WHERE nth.theme_id IS NOT NULL), '{}') AS theme_ids,
-               i.participant_name AS interview_name, u.name AS creator_name
+               i.participant_name AS interview_name, u.name AS creator_name,
+               gq.text AS guide_question_text
              FROM notes n
              LEFT JOIN note_tags nt ON nt.note_id = n.id
              LEFT JOIN note_themes nth ON nth.note_id = n.id
              LEFT JOIN interviews i ON i.id = n.interview_id
              LEFT JOIN users u ON u.id = n.created_by
+             LEFT JOIN guide_questions gq ON gq.id = n.guide_question_id
              WHERE n.project_id = $1
                AND (n.visibility = 'shared' OR n.visibility IS NULL OR n.created_by = $2)
-             GROUP BY n.id, i.participant_name, u.name
+             GROUP BY n.id, i.participant_name, u.name, gq.text
              ORDER BY n.created_at ASC`, [projectId, user.user_id]),
-      query(`SELECT t.*, COUNT(nth.note_id)::int AS note_count
+      query(`SELECT t.*, COUNT(nth.note_id)::int AS note_count, u.name AS creator_name
              FROM themes t
              LEFT JOIN note_themes nth ON nth.theme_id = t.id
+             LEFT JOIN users u ON u.id = t.created_by
              WHERE t.project_id = $1
-             GROUP BY t.id ORDER BY t.created_at ASC`, [projectId]),
+             GROUP BY t.id, u.name ORDER BY t.sort_order ASC NULLS LAST, t.created_at ASC`, [projectId]),
       query(`SELECT ins.*, u.name AS creator_name,
                COALESCE(array_agg(it.theme_id::text) FILTER (WHERE it.theme_id IS NOT NULL), '{}') AS theme_ids
              FROM insights ins
@@ -49,6 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
              WHERE r.project_id = $1
              GROUP BY r.id, u.name ORDER BY r.created_at ASC`, [projectId]),
       getProjectCounts(projectId),
+      query(`SELECT * FROM guide_questions WHERE project_id = $1 ORDER BY order_index ASC`, [projectId]),
     ])
 
   if (!projRes.rows[0]) return notFound()
@@ -63,6 +67,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     insights: insightsRes.rows,
     recommendations: recsRes.rows,
     counts,
+    guide_questions: guideQsRes.rows,
   })
 }
 
@@ -73,12 +78,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(projectId, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { title, description, executive_summary } = await request.json()
+  const { title, description, executive_summary, archetypes_data } = await request.json()
 
   if (executive_summary !== undefined) {
     const result = await query(
       `UPDATE projects SET executive_summary = $1, executive_summary_generated_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *`,
       [executive_summary, projectId]
+    )
+    return NextResponse.json(result.rows[0])
+  }
+
+  if (archetypes_data !== undefined) {
+    const result = await query(
+      `UPDATE projects SET archetypes_data = $1, archetypes_generated_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [JSON.stringify(archetypes_data), projectId]
     )
     return NextResponse.json(result.rows[0])
   }

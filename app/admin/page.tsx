@@ -16,14 +16,16 @@ export default async function AdminPage() {
     query<{
       projects: number; demo_projects: number; interviews: number
       notes: number; themes: number; insights: number; recommendations: number
+      guide_questions: number
     }>(`SELECT
-      (SELECT COUNT(*) FROM projects WHERE demo = false)::int AS projects,
-      (SELECT COUNT(*) FROM projects WHERE demo = true)::int  AS demo_projects,
-      (SELECT COUNT(*) FROM interviews)::int                  AS interviews,
-      (SELECT COUNT(*) FROM notes)::int                       AS notes,
-      (SELECT COUNT(*) FROM themes)::int                      AS themes,
-      (SELECT COUNT(*) FROM insights)::int                    AS insights,
-      (SELECT COUNT(*) FROM recommendations)::int             AS recommendations`),
+      (SELECT COUNT(*) FROM projects WHERE demo = false)::int          AS projects,
+      (SELECT COUNT(*) FROM projects WHERE demo = true)::int           AS demo_projects,
+      (SELECT COUNT(*) FROM interviews)::int                           AS interviews,
+      (SELECT COUNT(*) FROM notes)::int                                AS notes,
+      (SELECT COUNT(*) FROM themes)::int                               AS themes,
+      (SELECT COUNT(*) FROM insights)::int                             AS insights,
+      (SELECT COUNT(*) FROM recommendations)::int                      AS recommendations,
+      (SELECT COUNT(*) FROM guide_questions WHERE is_catch_all = false)::int AS guide_questions`),
 
     query<{ real_users: number; guest_users: number; new_7d: number; new_30d: number }>(`SELECT
       COUNT(*) FILTER (WHERE is_guest IS DISTINCT FROM true)::int AS real_users,
@@ -44,8 +46,8 @@ export default async function AdminPage() {
       WHERE u.is_guest IS DISTINCT FROM true AND u.email IS NOT NULL
       ORDER BY u.created_at DESC`),
 
-    query<{ id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number }>(`
-      SELECT p.id, p.title, p.current_phase, p.created_at::text, p.updated_at::text,
+    query<{ id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number; has_guide: boolean }>(`
+      SELECT p.id, p.title, p.current_phase, p.created_at::text, p.updated_at::text, p.has_guide,
         (SELECT COUNT(*) FROM project_memberships pm WHERE pm.project_id = p.id)::int AS member_count
       FROM projects p WHERE p.demo = false
       ORDER BY p.updated_at DESC`),

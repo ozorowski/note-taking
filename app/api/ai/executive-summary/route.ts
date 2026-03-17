@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, forbidden, getProjectRole } from '@/lib/api-helpers'
+import { getSetting } from '@/lib/settings'
 
 async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
-  if (process.env.GEMINI_API_KEY) {
+  const [geminiKey, groqKey, openaiKey] = await Promise.all([getSetting('GEMINI_API_KEY'), getSetting('GROQ_API_KEY'), getSetting('OPENAI_API_KEY')])
+
+  if (geminiKey) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -27,11 +30,11 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
@@ -52,11 +55,11 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
@@ -137,9 +140,7 @@ ${recsList || 'None'}`
   const summary = await callAI(systemPrompt, userPrompt)
 
   if (!summary) {
-    return NextResponse.json({
-      summary: `This research project "${proj.title}" identified ${insights.length} key insight${insights.length !== 1 ? 's' : ''} and produced ${recs.length} recommendation${recs.length !== 1 ? 's' : ''}. To generate a full AI executive summary, add a GEMINI_API_KEY environment variable.`,
-    })
+    return NextResponse.json({ error: 'AI provider unavailable — check your API keys or rate limits' }, { status: 503 })
   }
 
   return NextResponse.json({ summary })

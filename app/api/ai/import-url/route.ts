@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthedUser, unauthorized, badRequest } from '@/lib/api-helpers'
 
+import { getSetting } from '@/lib/settings'
 interface ImportedItem {
   content: string
   author: string | null
@@ -9,10 +10,12 @@ interface ImportedItem {
 
 // Reused callAI pattern (single prompt, JSON response) from cluster-notes/route.ts
 async function callAI(prompt: string): Promise<{ text: string; error?: string }> {
-  if (process.env.GEMINI_API_KEY) {
+  const [geminiKey, groqKey, openaiKey] = await Promise.all([getSetting('GEMINI_API_KEY'), getSetting('GROQ_API_KEY'), getSetting('OPENAI_API_KEY')])
+
+  if (geminiKey) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -30,11 +33,11 @@ async function callAI(prompt: string): Promise<{ text: string; error?: string }>
     } catch { /* fall through */ }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
@@ -52,11 +55,11 @@ async function callAI(prompt: string): Promise<{ text: string; error?: string }>
     } catch { /* fall through */ }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],

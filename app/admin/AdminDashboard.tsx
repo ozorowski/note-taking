@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import AppNav from '@/components/AppNav'
 
@@ -9,11 +9,12 @@ import AppNav from '@/components/AppNav'
 interface Totals {
   projects: number; demo_projects: number; interviews: number
   notes: number; themes: number; insights: number; recommendations: number
+  guide_questions: number
 }
 interface UserStats { real_users: number; guest_users: number; new_7d: number; new_30d: number }
 interface PhaseRow { phase: string; count: number }
 interface UserRow { id: string; name: string; email: string; created_at: string; project_count: number }
-interface ProjectRow { id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number }
+interface ProjectRow { id: string; title: string; current_phase: string; created_at: string; updated_at: string; member_count: number; has_guide: boolean }
 interface DayRow { day: string; count: number }
 
 interface DbSchemaRow { table_name: string; column_name: string; data_type: string; is_nullable: string }
@@ -30,13 +31,14 @@ interface Props {
   migrations: string[]
 }
 
-type Tab = 'overview' | 'users' | 'projects' | 'architecture'
+type Tab = 'overview' | 'users' | 'projects' | 'architecture' | 'settings'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview',     label: 'Overview' },
   { id: 'users',        label: 'Users' },
   { id: 'projects',     label: 'Projects' },
   { id: 'architecture', label: 'Architecture' },
+  { id: 'settings',     label: 'Settings' },
 ]
 
 // ── Phase colours ──────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ export default function AdminDashboard({ userName, totals, userStats, phases, us
         {tab === 'users'        && <UsersTab users={users} userStats={userStats} />}
         {tab === 'projects'     && <ProjectsTab projects={projects} phases={phases} />}
         {tab === 'architecture' && <ArchitectureTab dbSchema={dbSchema} migrations={migrations} />}
+        {tab === 'settings'     && <SettingsTab />}
       </main>
     </div>
   )
@@ -137,9 +140,10 @@ function OverviewTab({ totals, userStats, phases, signupsByDay }: {
       {/* Bottom — research activity */}
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Research activity</p>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <BigStat label="Interviews"      value={totals.interviews}      accent="gray" />
           <BigStat label="Notes"           value={totals.notes}           accent="gray" />
+          <BigStat label="Guide questions" value={totals.guide_questions} accent="gray" />
           <BigStat label="Themes"          value={totals.themes}          accent="gray" />
           <BigStat label="Insights"        value={totals.insights}        accent="gray" />
           <BigStat label="Recommendations" value={totals.recommendations} accent="gray" />
@@ -356,6 +360,7 @@ function ProjectsTab({ projects, phases }: { projects: ProjectRow[]; phases: Pha
                           {p.title}
                           <span className="block text-[10px] text-gray-400 mt-0.5">
                             {p.member_count} member{p.member_count !== 1 ? 's' : ''} · {fmt(p.updated_at)}
+                            {p.has_guide && <span className="ml-1 text-indigo-400">· guide</span>}
                           </span>
                         </Link>
                       ))
@@ -402,7 +407,10 @@ function ProjectsTab({ projects, phases }: { projects: ProjectRow[]; phases: Pha
                 {filtered.map(p => (
                   <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5">
-                      <Link href={`/projects/${p.id}`} className="text-blue-600 hover:underline font-medium">{p.title}</Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/projects/${p.id}`} className="text-blue-600 hover:underline font-medium">{p.title}</Link>
+                        {p.has_guide && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-medium">guide</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5"><PhaseChip phase={p.current_phase} /></td>
                     <td className="px-4 py-2.5 text-gray-500">{p.member_count}</td>
@@ -520,10 +528,10 @@ function ArchitectureTab({ dbSchema, migrations }: { dbSchema: DbSchemaRow[]; mi
             ))}
           </div>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs text-gray-500">
-            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Interviews</span> — Add research participants. Gate: ≥1 interview to advance (skipped for URL-imported projects).</div>
-            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Capture</span> — Private note-taking per interview. Evidence types: Quote / Observation / Pain Point / Other.</div>
+            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Interviews</span> — Add research participants. Optional: set up a structured discussion guide (ordered questions with stage labels). Gate: ≥1 interview to advance (skipped for URL-imported projects).</div>
+            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Capture</span> — Private note-taking per interview. Evidence types: Quote / Observation / Pain Point / Other. If a discussion guide exists, notes are anchored to a specific guide question.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Notes</span> — Share captured notes with the team. Gate: all notes must be shared before advancing.</div>
-            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Themes</span> — AI-assisted clustering of notes into themes. Gate: ≥1 theme, all notes clustered.</div>
+            <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Themes</span> — AI-assisted clustering of notes into themes. Filter by guide question when a discussion guide is present. Gate: ≥1 theme, all notes clustered.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Insights</span> — Synthesise themes into insights. Gate: ≥1 insight, all linked to themes.</div>
             <div className="p-3 bg-gray-50 rounded-lg"><span className="font-medium text-gray-700">Recommendations</span> — Action items linked to insights. Gate: ≥1 recommendation linked to insight.</div>
           </div>
@@ -685,6 +693,124 @@ function BigStat({ label, value, sub, accent }: { label: string; value: number; 
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-3xl font-bold ${num}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    </div>
+  )
+}
+
+// ── Settings tab ───────────────────────────────────────────────────────────
+
+interface SettingRow {
+  key: string
+  label: string
+  hint: string
+  source: 'db' | 'env' | 'unset'
+  masked: string | null
+  updated_at: string | null
+}
+
+function SettingsTab() {
+  const [settings, setSettings] = useState<SettingRow[]>([])
+  const [editKey, setEditKey] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [savedKey, setSavedKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/settings').then(r => r.json()).then(d => setSettings(d.settings ?? []))
+  }, [])
+
+  async function save(key: string) {
+    setSaving(true)
+    await fetch('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value: editValue }),
+    })
+    setSaving(false)
+    setEditKey(null)
+    setEditValue('')
+    setSavedKey(key)
+    setTimeout(() => setSavedKey(null), 2500)
+    const res = await fetch('/api/admin/settings')
+    const d = await res.json()
+    setSettings(d.settings ?? [])
+  }
+
+  const sourceChip: Record<string, string> = {
+    db:    'bg-green-50 text-green-700 border border-green-200',
+    env:   'bg-gray-100 text-gray-500 border border-gray-200',
+    unset: 'bg-red-50 text-red-500 border border-red-200',
+  }
+  const sourceLabel: Record<string, string> = { db: 'DB override', env: 'from .env', unset: 'not set' }
+
+  return (
+    <div className="max-w-2xl">
+      <h2 className="text-lg font-semibold text-gray-900 mb-1">API Keys</h2>
+      <p className="text-sm text-gray-500 mb-6">
+        DB values take priority over environment variables and take effect immediately — no redeploy needed.
+        Clear a key to fall back to the env var.
+      </p>
+      <div className="flex flex-col gap-3">
+        {settings.map(s => (
+          <div key={s.key} className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-semibold text-gray-800">{s.label}</span>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${sourceChip[s.source]}`}>
+                    {sourceLabel[s.source]}
+                  </span>
+                  {savedKey === s.key && (
+                    <span className="text-[10px] text-green-600 font-medium">✓ Saved</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">{s.hint}</p>
+                {s.masked && (
+                  <p className="text-xs font-mono text-gray-500 mt-1.5">{s.masked}</p>
+                )}
+                {s.updated_at && (
+                  <p className="text-[10px] text-gray-300 mt-0.5">Updated {fmt(s.updated_at)}</p>
+                )}
+              </div>
+              {editKey !== s.key && (
+                <button
+                  onClick={() => { setEditKey(s.key); setEditValue('') }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex-shrink-0"
+                >
+                  {s.source === 'db' ? 'Change' : 'Set'}
+                </button>
+              )}
+            </div>
+
+            {editKey === s.key && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  autoFocus
+                  type="password"
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') save(s.key); if (e.key === 'Escape') setEditKey(null) }}
+                  placeholder={s.source === 'db' ? 'Enter new value, or leave blank to clear' : 'Paste API key…'}
+                  className="flex-1 text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono"
+                />
+                <button
+                  onClick={() => save(s.key)}
+                  disabled={saving}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? '…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditKey(null)}
+                  className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

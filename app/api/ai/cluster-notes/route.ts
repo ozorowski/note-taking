@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, getClient } from '@/lib/db'
 import { getAuthedUser, unauthorized, getProjectRole } from '@/lib/api-helpers'
+import { getSetting } from '@/lib/settings'
 
 async function callAI(prompt: string): Promise<{ text: string; error?: string }> {
-  if (process.env.GEMINI_API_KEY) {
+  const [geminiKey, groqKey, openaiKey] = await Promise.all([getSetting('GEMINI_API_KEY'), getSetting('GROQ_API_KEY'), getSetting('OPENAI_API_KEY')])
+
+  let lastError = 'No AI key configured — add GROQ_API_KEY to your environment'
+
+  if (geminiKey) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 2000 },
+            generationConfig: { maxOutputTokens: 4000 },
           }),
         }
       )
@@ -20,61 +25,73 @@ async function callAI(prompt: string): Promise<{ text: string; error?: string }>
       if (res.ok) {
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
         if (text) return { text }
+        lastError = `Gemini returned empty response (finish reason: ${data.candidates?.[0]?.finishReason})`
+      } else {
+        lastError = `Gemini error: ${data?.error?.message || res.status}`
       }
-      console.error('Gemini failed, trying next provider:', data?.error?.message || res.status)
+      console.error('Gemini failed, trying next provider:', lastError)
     } catch (e) {
+      lastError = `Gemini exception: ${e}`
       console.error('Gemini error, trying next provider:', e)
     }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
             { role: 'system', content: 'You are a senior UX researcher. You must respond with valid JSON only — no markdown, no explanation.' },
             { role: 'user', content: prompt },
           ],
-          max_tokens: 2000,
+          max_tokens: 4000,
         }),
       })
       const data = await res.json()
       if (res.ok) {
         const text = data.choices?.[0]?.message?.content || ''
         if (text) return { text }
+        lastError = 'Groq returned empty response'
+      } else {
+        lastError = `Groq error: ${data?.error?.message || res.status}`
       }
-      console.error('Groq failed:', data?.error?.message || res.status)
+      console.error('Groq failed:', lastError)
     } catch (e) {
+      lastError = `Groq exception: ${e}`
       console.error('Groq error:', e)
     }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2000,
+          max_tokens: 4000,
         }),
       })
       const data = await res.json()
       if (res.ok) {
         const text = data.choices?.[0]?.message?.content || ''
         if (text) return { text }
+        lastError = 'OpenAI returned empty response'
+      } else {
+        lastError = `OpenAI error: ${data?.error?.message || res.status}`
       }
-      console.error('OpenAI failed:', data?.error?.message || res.status)
+      console.error('OpenAI failed:', lastError)
     } catch (e) {
+      lastError = `OpenAI exception: ${e}`
       console.error('OpenAI error:', e)
     }
   }
 
-  return { text: '', error: 'No AI key configured — add GROQ_API_KEY to your environment' }
+  return { text: '', error: lastError }
 }
 
 function extractJSON(raw: string) {
@@ -95,11 +112,12 @@ export async function POST(request: NextRequest) {
   // Fetch ungrouped notes and existing themes in parallel
   const [notesRes, existingThemesRes] = await Promise.all([
     query(
-      `SELECT n.id, n.content
+      `SELECT n.id, n.content, n.capture_group_id
        FROM notes n
        LEFT JOIN note_themes nt ON nt.note_id = n.id
        WHERE n.project_id = $1 AND nt.note_id IS NULL
-       ORDER BY n.created_at`,
+         AND (n.visibility IS NULL OR n.visibility = 'shared')
+       ORDER BY n.capture_group_id NULLS LAST, n.created_at`,
       [project_id]
     ),
     query(
@@ -108,11 +126,34 @@ export async function POST(request: NextRequest) {
     ),
   ])
 
-  const notes = notesRes.rows
+  const rawNotes = notesRes.rows
   const existingThemes = existingThemesRes.rows
 
-  if (notes.length === 0)
+  if (rawNotes.length === 0)
     return NextResponse.json({ error: 'All notes are already grouped into themes' }, { status: 400 })
+
+  // Collapse capture groups into a single representative entry
+  type Rep = { id: string; content: string; groupNoteIds?: string[] }
+  const seenGroups = new Set<string>()
+  const groupMembers = new Map<string, string[]>()
+  for (const n of rawNotes) {
+    if (n.capture_group_id) {
+      const arr = groupMembers.get(n.capture_group_id) ?? []
+      arr.push(n.id)
+      groupMembers.set(n.capture_group_id, arr)
+    }
+  }
+  const notes: Rep[] = []
+  for (const n of rawNotes) {
+    if (!n.capture_group_id) {
+      notes.push({ id: n.id, content: n.content })
+    } else if (!seenGroups.has(n.capture_group_id)) {
+      seenGroups.add(n.capture_group_id)
+      const ids = groupMembers.get(n.capture_group_id)!
+      const suffix = ids.length > 1 ? ` [duplicate capture ×${ids.length} — treat as one finding]` : ''
+      notes.push({ id: n.id, content: n.content + suffix, groupNoteIds: ids })
+    }
+  }
 
   const notesList = notes.map((n, i) => `${i}: ${n.content}`).join('\n')
 
@@ -197,6 +238,15 @@ ${notesList}`
   const client = await getClient()
   try {
     await client.query('BEGIN')
+
+    // Fetch current max display_number and sort_order so new themes continue the sequence
+    const { rows: [{ max_num, max_sort }] } = await client.query(
+      `SELECT COALESCE(MAX(display_number), 0) AS max_num, COALESCE(MAX(sort_order), 0) AS max_sort FROM themes WHERE project_id = $1`,
+      [project_id]
+    )
+    let nextNum = parseInt(max_num)
+    let nextSort = parseInt(max_sort)
+
     const created: unknown[] = []
     for (const theme of parsed.themes) {
       let themeId: string
@@ -205,22 +255,28 @@ ${notesList}`
         // Assign notes to an existing theme — no insert needed
         themeId = theme.id
       } else {
-        // Create a new theme
+        // Create a new theme with display_number and sort_order
+        nextNum++
+        nextSort++
         const r = await client.query(
-          `INSERT INTO themes (project_id, title, description, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-          [project_id, theme.title || 'Untitled Theme', theme.description || null, user.user_id]
+          `INSERT INTO themes (project_id, title, description, created_by, display_number, sort_order) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [project_id, theme.title || 'Untitled Theme', theme.description || null, user.user_id, nextNum, nextSort]
         )
         themeId = r.rows[0].id
         created.push(r.rows[0])
       }
 
       for (const idx of theme.note_indices ?? []) {
-        const note = notes[idx]
-        if (!note) continue
-        await client.query(
-          `INSERT INTO note_themes (note_id, theme_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-          [note.id, themeId]
-        )
+        const rep = notes[idx]
+        if (!rep) continue
+        // Expand group representatives: assign all notes in the group to this theme
+        const noteIds = rep.groupNoteIds ?? [rep.id]
+        for (const noteId of noteIds) {
+          await client.query(
+            `INSERT INTO note_themes (note_id, theme_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+            [noteId, themeId]
+          )
+        }
       }
     }
     await client.query('COMMIT')

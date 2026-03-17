@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthedUser, unauthorized, getProjectRole } from '@/lib/api-helpers'
+import { getSetting } from '@/lib/settings'
 
 async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
-  if (process.env.GEMINI_API_KEY) {
+  const [geminiKey, groqKey, openaiKey] = await Promise.all([getSetting('GEMINI_API_KEY'), getSetting('GROQ_API_KEY'), getSetting('OPENAI_API_KEY')])
+
+  if (geminiKey) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -27,11 +30,11 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
@@ -52,11 +55,11 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
@@ -255,19 +258,7 @@ Output as a JSON array only — no other text:
   const aiRaw = await callAI(systemPrompt, userPrompt)
 
   if (!aiRaw) {
-    const stub = themesRes.rows.map(t => t.title).join(', ')
-    return NextResponse.json({
-      drafts: [{
-        content: `When working with themes like ${stub}, researchers struggle to synthesise findings, because no AI key is configured — add a GEMINI_API_KEY environment variable to get real AI drafts.`,
-        root_cause: null,
-        iqs_score: null,
-        linked_theme_ids: theme_ids,
-        link_rationale: {},
-        supporting_note_ids: [],
-        needs_new_theme: false,
-        suggested_new_theme_name: null,
-      }],
-    })
+    return NextResponse.json({ error: 'AI provider unavailable — check your API keys or rate limits' }, { status: 503 })
   }
 
   const drafts = parseInsightDrafts(aiRaw, theme_ids)
