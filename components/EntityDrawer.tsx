@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Insight, Recommendation, Theme, Note } from '@/lib/types'
 import TraceView from './TraceView'
 
@@ -13,21 +13,23 @@ const IQS_DIMENSIONS = [
   { label: 'Supported by evidence', desc: 'Is it grounded in multiple notes or participants?', range: '0–10' },
 ]
 
-type EntityType = 'insight' | 'recommendation'
+type EntityType = 'insight' | 'recommendation' | 'theme'
 
 type InsightWithIds = Insight & { theme_ids?: string[] }
 type RecommendationWithIds = Recommendation & { insight_ids?: string[] }
 
 interface Props {
   type: EntityType
-  entity: InsightWithIds | RecommendationWithIds
+  entity: InsightWithIds | RecommendationWithIds | Theme
   projectId: string
   themes: Theme[]
   insights: InsightWithIds[]
   notes: Note[]
   isEditor: boolean
+  initialEditing?: boolean
   onClose: () => void
   onRefresh: () => void
+  onDelete?: () => void
 }
 
 export default function EntityDrawer({
@@ -37,45 +39,68 @@ export default function EntityDrawer({
   insights,
   notes,
   isEditor,
+  initialEditing = false,
   onClose,
   onRefresh,
+  onDelete,
 }: Props) {
-  const [editing, setEditing] = useState(false)
-  const [content, setContent] = useState(entity.content)
+  const [editing, setEditing] = useState(initialEditing)
+  useEffect(() => { setEditing(initialEditing) }, [initialEditing])
+  const [content, setContent] = useState(type === 'theme' ? (entity as Theme).title : (entity as InsightWithIds | RecommendationWithIds).content)
+  const [description, setDescription] = useState(type === 'theme' ? ((entity as Theme).description || '') : '')
   const [secondary, setSecondary] = useState(
-    type === 'insight' ? '' : (entity as RecommendationWithIds).rationale || ''
+    type === 'recommendation' ? ((entity as RecommendationWithIds).rationale || '') : ''
   )
   const [saving, setSaving] = useState(false)
   const [rootCause, setRootCause] = useState(type === 'insight' ? ((entity as InsightWithIds).root_cause || '') : '')
   const [showInsightList, setShowInsightList] = useState(false)
 
   const isInsight = type === 'insight'
+  const isRec = type === 'recommendation'
+  const isTheme = type === 'theme'
+
   const insight = entity as InsightWithIds
   const rec = entity as RecommendationWithIds
+  const theme = entity as Theme
 
   const linkedThemeIds = isInsight ? (insight.theme_ids || []) : []
-  const linkedInsightIds = !isInsight ? (rec.insight_ids || []) : []
+  const linkedInsightIds = isRec ? (rec.insight_ids || []) : []
 
   const linkedThemes = themes.filter(t => linkedThemeIds.includes(t.id))
   const linkedInsights = insights.filter(i => linkedInsightIds.includes(i.id))
   const availableThemes = themes.filter(t => !linkedThemeIds.includes(t.id))
   const availableInsights = insights.filter(i => !linkedInsightIds.includes(i.id))
 
+  // Entity label for header
+  const entityLabel = isInsight
+    ? `Insight${insight.display_number ? ` ${insight.display_number}` : ''}`
+    : isRec
+    ? `Recommendation${rec.display_number ? ` ${rec.display_number}` : ''}`
+    : `Theme${theme.display_number ? ` ${theme.display_number}` : ''}`
+
   async function save() {
     setSaving(true)
-    const body: Record<string, unknown> = { content: content.trim() }
-    if (isInsight) {
-      const rc = rootCause.trim()
-      body.root_cause = rc ? rc.charAt(0).toUpperCase() + rc.slice(1) : null
+    if (isTheme) {
+      await fetch(`/api/themes/${entity.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: description.trim() || null }),
+      })
     } else {
-      body.rationale = secondary.trim() || null
+      const body: Record<string, unknown> = { content: content.trim() }
+      if (isInsight) {
+        const rc = rootCause.trim()
+        body.root_cause = rc ? rc.charAt(0).toUpperCase() + rc.slice(1) : null
+      } else {
+        body.rationale = secondary.trim() || null
+      }
+      const endpoint = isInsight ? `/api/insights/${entity.id}` : `/api/recommendations/${entity.id}`
+      await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
     }
-    const endpoint = isInsight ? `/api/insights/${entity.id}` : `/api/recommendations/${entity.id}`
-    await fetch(endpoint, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
     setSaving(false)
     setEditing(false)
     onRefresh()
@@ -109,6 +134,13 @@ export default function EntityDrawer({
     onRefresh()
   }
 
+  function handleDelete() {
+    if (window.confirm(`Delete this ${type}? This cannot be undone.`)) {
+      onDelete?.()
+      onClose()
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       {/* Backdrop */}
@@ -117,41 +149,77 @@ export default function EntityDrawer({
       {/* Panel */}
       <div className="relative w-[480px] max-w-full bg-white shadow-xl flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-          <h2 className="font-semibold text-gray-800 capitalize">{type}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 flex-shrink-0">
+          <div>
+            <h2 className="font-semibold text-gray-800">{entityLabel}</h2>
+            <p className="text-[11px] text-gray-400 mt-1">
+              {(entity as Insight).creator_name && <>Created by <span className="font-medium">{(entity as Insight).creator_name}</span> · </>}
+              {new Date(entity.created_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+              {' · '}
+              {new Date(entity.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none mt-0.5">
             ×
           </button>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Content */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                {isInsight ? 'Insight' : 'Recommendation'}
-              </label>
-              {isEditor && !editing && (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                >
-                  Edit
-                </button>
+
+          {/* ── THEME type ───────────────────────────────── */}
+          {isTheme && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Title</label>
+                <p className="text-sm text-gray-800 font-medium">{theme.title}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Rename by clicking the title on the board</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Description</label>
+                {editing ? (
+                  <textarea
+                    autoFocus
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={4}
+                    placeholder="Describe what this theme is about…"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                  />
+                ) : (
+                  description
+                    ? <p className="text-sm text-gray-700 leading-relaxed">{description}</p>
+                    : <p className="text-sm text-gray-300 italic">No description yet</p>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── INSIGHT / RECOMMENDATION content ─────────── */}
+          {!isTheme && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  {isInsight ? 'Insight' : 'Recommendation'}
+                </label>
+                {isEditor && !editing && (
+                  <button onClick={() => setEditing(true)} className="text-xs text-blue-600 hover:text-blue-800">
+                    Edit
+                  </button>
+                )}
+              </div>
+              {editing ? (
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
+              ) : (
+                <p className="text-sm text-gray-800 leading-relaxed">{isTheme ? theme.title : (entity as InsightWithIds | RecommendationWithIds).content}</p>
               )}
             </div>
-            {editing ? (
-              <textarea
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-              />
-            ) : (
-              <p className="text-sm text-gray-800 leading-relaxed">{entity.content}</p>
-            )}
-          </div>
+          )}
 
           {/* Root cause (insights only) */}
           {isInsight && (
@@ -207,7 +275,7 @@ export default function EntityDrawer({
           })()}
 
           {/* Rationale (recommendations only) */}
-          {!isInsight && (
+          {isRec && (
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
                 Rationale <span className="font-normal text-gray-300">(optional)</span>
@@ -273,7 +341,7 @@ export default function EntityDrawer({
           )}
 
           {/* Linked insights (recommendations only) */}
-          {!isInsight && (
+          {isRec && (
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
                 Linked insights
@@ -330,32 +398,45 @@ export default function EntityDrawer({
             </div>
           )}
 
-          {/* Save / Cancel */}
-          {editing && (
-            <div className="flex gap-2">
-              <button
-                onClick={save}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save changes'}
-              </button>
-              <button
-                onClick={() => {
-                  setEditing(false)
-                  setContent(entity.content)
-                  setSecondary(type === 'insight' ? '' : (entity as RecommendationWithIds).rationale || '')
-                  setRootCause(isInsight ? (insight.root_cause || '') : '')
-                }}
-                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
+          {/* Save / Cancel / Delete */}
+          {(editing || (isEditor && onDelete)) && (
+            <div className="flex items-center gap-2 pt-2">
+              {editing && (
+                <>
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(false)
+                      setContent(isTheme ? theme.title : (entity as InsightWithIds | RecommendationWithIds).content)
+                      setDescription(isTheme ? (theme.description || '') : '')
+                      setSecondary(isRec ? (rec.rationale || '') : '')
+                      setRootCause(isInsight ? (insight.root_cause || '') : '')
+                    }}
+                    className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              {isEditor && onDelete && (
+                <button
+                  onClick={handleDelete}
+                  className="ml-auto px-4 py-2 text-sm text-red-400 hover:text-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           )}
 
           {/* Trace view (recommendations only) */}
-          {!isInsight && linkedInsights.length > 0 && (
+          {isRec && linkedInsights.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
                 Evidence chain

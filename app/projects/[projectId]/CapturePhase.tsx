@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { Note, Interview } from '@/lib/types'
+import type { Note, Interview, GuideQuestion } from '@/lib/types'
 import NoteCard from './NoteCard'
 import NoteEditModal from './NoteEditModal'
 
@@ -13,6 +13,8 @@ interface Props {
   interviews: Interview[]
   notes: Note[]
   isEditor: boolean
+  guideQuestions: GuideQuestion[]
+  consentReminderEnabled?: boolean
   onRefresh: () => void
 }
 
@@ -24,8 +26,9 @@ const EVIDENCE_TYPES: { type: EvidenceType; label: string; key: string; color: s
 ]
 
 
-export default function CapturePhase({ projectId, currentUserId, interviews, notes, isEditor, onRefresh }: Props) {
+export default function CapturePhase({ projectId, currentUserId, interviews, notes, isEditor, guideQuestions, consentReminderEnabled = false, onRefresh }: Props) {
   const [selectedInterviewId, setSelectedInterviewId] = useState(interviews[0]?.id || '')
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(guideQuestions[0]?.id ?? null)
   const [content, setContent] = useState('')
   const [evidenceType, setEvidenceType] = useState<EvidenceType>('observation')
   const [saving, setSaving] = useState(false)
@@ -35,16 +38,64 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
   const [newNoteId, setNewNoteId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Consent state
+  const [showConsentModal, setShowConsentModal] = useState(false)
+  const [consentChecked, setConsentChecked] = useState(false)
+  const [isConsentSwitch, setIsConsentSwitch] = useState(false)
+  const [sessionConfirmedIds, setSessionConfirmedIds] = useState<Set<string>>(new Set())
+  const prevInterviewIdRef = useRef<string>('')
+
   // Focus textarea on mount
   useEffect(() => {
     textareaRef.current?.focus()
   }, [])
 
+  // Show consent modal when interview changes and consent not yet confirmed
+  useEffect(() => {
+    if (!consentReminderEnabled || !selectedInterviewId) return
+    if (selectedInterviewId === prevInterviewIdRef.current) return
+
+    const wasInterviewSelected = prevInterviewIdRef.current !== ''
+    prevInterviewIdRef.current = selectedInterviewId
+
+    const interview = interviews.find(i => i.id === selectedInterviewId)
+    const alreadyConfirmed = (interview?.consent_confirmed ?? false) || sessionConfirmedIds.has(selectedInterviewId)
+    if (!alreadyConfirmed) {
+      setIsConsentSwitch(wasInterviewSelected)
+      setShowConsentModal(true)
+      setConsentChecked(false)
+    }
+  // Intentionally only re-run when interview selection changes, not on every interviews prop refresh
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInterviewId, consentReminderEnabled])
+
   const myNotes = notes
     .filter(n => n.created_by === currentUserId)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const privateCount = myNotes.filter(n => n.visibility === 'private').length
+  const privateNotes = myNotes.filter(n => n.visibility === 'private')
+  const sharedNotes = myNotes.filter(n => n.visibility !== 'private')
+  const privateCount = privateNotes.length
+
+  const selectedInterview = interviews.find(i => i.id === selectedInterviewId)
+  const isConsentConfirmed = !!(selectedInterview?.consent_confirmed || sessionConfirmedIds.has(selectedInterviewId))
+
+  async function handleConsentConfirm() {
+    const id = selectedInterviewId
+    setSessionConfirmedIds(prev => new Set([...prev, id]))
+    setShowConsentModal(false)
+    await fetch(`/api/interviews/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consent_confirmed: true }),
+    })
+    onRefresh()
+    textareaRef.current?.focus()
+  }
+
+  function handleConsentCancel() {
+    setShowConsentModal(false)
+  }
 
   async function saveNote() {
     if (!content.trim()) return
@@ -59,6 +110,7 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
         content: content.trim(),
         evidence_type: evidenceType,
         visibility: 'private',
+        guide_question_id: selectedQuestionId || null,
       }),
     })
     if (res.ok) {
@@ -107,15 +159,6 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
     onRefresh()
   }
 
-  async function shareNote(noteId: string) {
-    await fetch(`/api/notes/${noteId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visibility: 'shared' }),
-    })
-    onRefresh()
-  }
-
   return (
     <div className="flex flex-col h-full bg-slate-50">
       {/* Header */}
@@ -142,8 +185,24 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
           </div>
         </div>
 
-        {/* Right — share button */}
-        <div className="flex-1 flex justify-end">
+        {/* Right — consent badge + share button */}
+        <div className="flex-1 flex items-center justify-end gap-3">
+          {consentReminderEnabled && selectedInterviewId && (
+            isConsentConfirmed ? (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-emerald-700 bg-emerald-50">
+                <span>🟢</span>
+                <span>Consent confirmed</span>
+              </span>
+            ) : (
+              <button
+                onClick={() => { setIsConsentSwitch(false); setConsentChecked(false); setShowConsentModal(true) }}
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+              >
+                <span>🟡</span>
+                <span>Consent not confirmed</span>
+              </button>
+            )
+          )}
           {privateCount > 0 && (
             <button
               onClick={shareAll}
@@ -159,8 +218,8 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
       {/* Input area */}
       <div className="px-6 py-6 flex-shrink-0 max-w-5xl w-full mx-auto">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8 space-y-4">
-          {/* Interview selector — inside the card, above the textarea */}
-          <div>
+          {/* Interview + question selectors */}
+          <div className="flex items-center gap-2 flex-wrap">
             {interviews.length > 0 ? (
               <select
                 value={selectedInterviewId}
@@ -175,6 +234,18 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
             ) : (
               <span className="text-sm text-amber-600">⚠ Add interviews first to start capturing</span>
             )}
+            {guideQuestions.length > 0 && (
+              <select
+                value={selectedQuestionId ?? ''}
+                onChange={e => setSelectedQuestionId(e.target.value || null)}
+                className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-700"
+              >
+                <option value="">— No question —</option>
+                {guideQuestions.map(q => (
+                  <option key={q.id} value={q.id}>{q.text}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <textarea
@@ -182,7 +253,11 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
             value={content}
             onChange={e => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your observation..."
+            placeholder={
+              selectedQuestionId && guideQuestions.length > 0
+                ? `Note for: "${guideQuestions.find(q => q.id === selectedQuestionId)?.text ?? ''}"`
+                : 'Type your observation...'
+            }
             rows={4}
             disabled={!selectedInterviewId || !isEditor}
             className="w-full text-[20px] leading-relaxed resize-none focus:outline-none placeholder-gray-300 disabled:opacity-50 text-gray-800"
@@ -224,43 +299,49 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
       <div className="flex-1 overflow-y-auto px-6 pb-8">
         <div className="max-w-5xl w-full mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-gray-500">
-              Your notes{myNotes.length > 0 && ` (${myNotes.length})`}
+            <h3 className="text-sm font-medium text-gray-500 flex items-center gap-1.5">
+              <span>🔒</span>
+              <span>Private notes{privateCount > 0 && ` (${privateCount})`}</span>
             </h3>
-            {privateCount > 0 && (
-              <span className="text-xs text-gray-400">🔒 {privateCount} private</span>
-            )}
           </div>
 
-          {myNotes.length === 0 ? (
+          <style>{`
+            @keyframes noteSlideIn {
+              from { opacity: 0; transform: translateY(-24px); }
+              to   { opacity: 1; transform: translateY(0); }
+            }
+            .note-enter { animation: noteSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+          `}</style>
+
+          {privateCount === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">
-              No notes yet — start capturing above
+              {sharedNotes.length > 0
+                ? 'All your notes have been shared and moved to Notes'
+                : 'No notes yet — start capturing above'}
             </div>
           ) : (
-            <>
-              <style>{`
-                @keyframes noteSlideIn {
-                  from { opacity: 0; transform: translateY(-24px); }
-                  to   { opacity: 1; transform: translateY(0); }
-                }
-                .note-enter { animation: noteSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-              `}</style>
-              <div className="space-y-2">
-                {myNotes.map(note => (
-                  <div key={note.id} className={note.id === newNoteId ? 'note-enter' : ''}>
-                    <NoteCard
-                      note={note}
-                      currentUserId={currentUserId}
-                      isEditor={isEditor}
-                      onEdit={() => setEditingNote(note)}
-                      onDelete={() => deleteNote(note.id)}
-                      onShare={() => shareNote(note.id)}
-                      showTimestamp
-                    />
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="space-y-2">
+              {privateNotes.map(note => (
+                <div key={note.id} className={note.id === newNoteId ? 'note-enter' : ''}>
+                  <NoteCard
+                    note={note}
+                    currentUserId={currentUserId}
+                    isEditor={isEditor}
+                    onEdit={isEditor ? () => setEditingNote(note) : undefined}
+                    showTimestamp
+                    showGuideQuestion={guideQuestions.length > 0}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {sharedNotes.length > 0 && (
+            <div className="mt-6 flex items-center gap-3 text-xs text-gray-400">
+              <div className="flex-1 border-t border-gray-100" />
+              <span>↗ {sharedNotes.length} {sharedNotes.length === 1 ? 'note' : 'notes'} shared — now visible in Notes</span>
+              <div className="flex-1 border-t border-gray-100" />
+            </div>
           )}
         </div>
       </div>
@@ -270,9 +351,62 @@ export default function CapturePhase({ projectId, currentUserId, interviews, not
           note={editingNote}
           interviews={interviews}
           currentUserId={currentUserId}
+          guideQuestions={guideQuestions.length > 0 ? guideQuestions : undefined}
           onClose={() => setEditingNote(null)}
           onRefresh={onRefresh}
+          onDelete={() => { deleteNote(editingNote.id); setEditingNote(null) }}
         />
+      )}
+
+      {/* Consent modal */}
+      {showConsentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">Participant Consent Reminder</h2>
+
+            {isConsentSwitch && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+                You are switching to a different participant. Please confirm consent for the new participant.
+              </p>
+            )}
+
+            <p className="text-sm text-gray-600 leading-relaxed mb-3">
+              Before recording notes, quotes, or observations, please ensure the participant has given informed consent for this session.
+            </p>
+            <p className="text-sm text-gray-600 mb-2">This may include consent for:</p>
+            <ul className="text-sm text-gray-500 space-y-1 mb-5 pl-2">
+              <li>• Note taking</li>
+              <li>• Recording (if applicable)</li>
+              <li>• Use of anonymised quotes in reports</li>
+            </ul>
+
+            <label className="flex items-start gap-3 cursor-pointer mb-6">
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={e => setConsentChecked(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="text-sm text-gray-700">I confirm that informed consent has been obtained.</span>
+            </label>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={handleConsentCancel}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Do not confirm consent
+              </button>
+              <button
+                onClick={handleConsentConfirm}
+                disabled={!consentChecked}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

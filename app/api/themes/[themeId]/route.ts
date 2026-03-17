@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { getAuthedUser, unauthorized, forbidden, notFound, badRequest, getProjectRole } from '@/lib/api-helpers'
 import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ themeId: string }> }
@@ -19,6 +19,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!role || role === 'viewer') return forbidden()
 
   const { title, description } = await request.json()
+  if (title?.trim()) {
+    const { rows: [{ exists }] } = await query(
+      `SELECT EXISTS(SELECT 1 FROM themes WHERE project_id = $1 AND LOWER(title) = LOWER($2) AND id != $3) AS exists`,
+      [theme.project_id, title.trim(), themeId]
+    )
+    if (exists) return badRequest('A theme with this name already exists.')
+  }
   const result = await query(
     `UPDATE themes SET title = COALESCE($1, title), description = COALESCE($2, description), updated_at = NOW() WHERE id = $3 RETURNING *`,
     [title?.trim() || null, description !== undefined ? description?.trim() ?? null : null, themeId]

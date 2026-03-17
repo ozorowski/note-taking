@@ -17,6 +17,8 @@ interface ImportPreview {
   source_kind: 'reddit' | 'web'
 }
 
+type BlankStep = 'details' | 'guide_choice' | 'guide_build'
+
 export default function NewProjectPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -24,6 +26,12 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+
+  // Blank mode multi-step state
+  const [blankStep, setBlankStep] = useState<BlankStep>('details')
+  const [draftQuestions, setDraftQuestions] = useState<Array<{ text: string; stage_label: string }>>([
+    { text: '', stage_label: '' },
+  ])
 
   // URL import state
   const [urlInput, setUrlInput] = useState('')
@@ -58,6 +66,39 @@ export default function NewProjectPage() {
     }
   }
 
+  async function createProject(withGuide: boolean, questions: Array<{ text: string; stage_label: string }>) {
+    setError('')
+    setLoading(true)
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: title.trim(),
+        description: description.trim() || null,
+      }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error || 'Failed to create project')
+      setLoading(false)
+      return
+    }
+    const project = await res.json()
+
+    if (withGuide) {
+      const validQuestions = questions
+        .filter(q => q.text.trim())
+        .map((q, i) => ({ text: q.text.trim(), stage_label: q.stage_label.trim() || null, order_index: i }))
+      await fetch(`/api/projects/${project.id}/guide`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions: validQuestions }),
+      })
+    }
+
+    router.push(`/projects/${project.id}`)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (mode === 'url') {
@@ -87,29 +128,35 @@ export default function NewProjectPage() {
       return
     }
 
-    if (!title.trim() && mode === 'blank') { setError('Title is required'); return }
-    setError('')
-    setLoading(true)
-
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: mode === 'demo' ? (title.trim() || 'Demo Project') : title.trim(),
-        description: description.trim() || null,
-        demo: mode === 'demo',
-      }),
-    })
-
-    if (!res.ok) {
-      const data = await res.json()
-      setError(data.error || 'Failed to create project')
-      setLoading(false)
-      return
+    if (mode === 'demo') {
+      setError('')
+      setLoading(true)
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ demo: true }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to create project')
+        setLoading(false)
+        return
+      }
+      const project = await res.json()
+      router.push(`/projects/${project.id}`)
     }
+  }
 
-    const project = await res.json()
-    router.push(`/projects/${project.id}`)
+  function addDraftQuestion() {
+    setDraftQuestions(prev => [...prev, { text: '', stage_label: '' }])
+  }
+
+  function removeDraftQuestion(i: number) {
+    setDraftQuestions(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  function updateDraftQuestion(i: number, field: 'text' | 'stage_label', value: string) {
+    setDraftQuestions(prev => prev.map((q, idx) => idx === i ? { ...q, [field]: value } : q))
   }
 
   const classifiedCount = preview?.items.filter(i => i.evidence_type !== null).length ?? 0
@@ -132,7 +179,7 @@ export default function NewProjectPage() {
         <div className="grid grid-cols-3 gap-3 mb-6">
           <button
             type="button"
-            onClick={() => { setMode('blank'); setError('') }}
+            onClick={() => { setMode('blank'); setBlankStep('details'); setError('') }}
             className={`p-4 rounded-xl border-2 text-left transition-colors ${mode === 'blank' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
           >
             <div className="text-xl mb-2">📋</div>
@@ -248,47 +295,176 @@ export default function NewProjectPage() {
           </form>
         )}
 
-        {/* Blank / demo form */}
-        {mode !== 'url' && (
+        {/* Demo form — no inputs needed, title/description are predefined */}
+        {mode === 'demo' && (
           <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Project title {mode === 'demo' && <span className="text-gray-400 font-normal">(optional for demo)</span>}
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder={mode === 'demo' ? 'Demo Project' : 'e.g. Mobile checkout research Q1'}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-0.5">Research objectives <span className="text-gray-400 font-normal">(optional)</span></label>
-              <p className="text-xs text-gray-400 mb-1.5">Add your goals to guide how AI generates and prioritises insights and recommendations.</p>
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="e.g. Understand how users discover and order food on mobile"
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-
-            {mode === 'demo' && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
-                Deliveroo usability study — 5 participants, 40 notes. Starts at the Themes phase ready for AI clustering, then insight and recommendation generation.
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Deliveroo Checkout &amp; Navigation Usability Study</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mt-2 mb-0.5">Research objective</p>
+                <p className="text-xs text-gray-700 leading-relaxed">
+                  Evaluate the end-to-end ordering experience on the Deliveroo app, from restaurant discovery to order completion, with a focus on task success and user confidence.
+                </p>
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  10 participants, 140 notes. Structured discussion guide with 8 questions across 4 stages.
+                  Starts at the Themes phase — ready for AI clustering, insight generation, and recommendations.
+                </p>
               </div>
-            )}
-
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                This is a sample project for exploring Trace. It won&apos;t affect your real research.
+              </div>
+            </div>
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Creating...' : mode === 'demo' ? 'Create demo project' : 'Create project'}
+              {loading ? 'Creating...' : 'Load sample project'}
             </button>
           </form>
+        )}
+
+        {/* Blank (interview) project — multi-step form */}
+        {mode === 'blank' && (
+
+          /* ── Step 1: Title + objectives ───────────────────────────────── */
+          blankStep === 'details' ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (title.trim()) setBlankStep('guide_choice') } }}
+                  placeholder="e.g. Mobile checkout research Q1"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Research objectives <span className="text-gray-400 font-normal">(optional)</span></label>
+                <p className="text-xs text-gray-400 mb-1.5">Add your goals to guide how AI generates and prioritises insights and recommendations.</p>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="e.g. Understand how users discover and order food on mobile"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={!title.trim()}
+                onClick={() => setBlankStep('guide_choice')}
+                className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                Continue →
+              </button>
+            </div>
+
+          /* ── Step 2: Guide choice ──────────────────────────────────────── */
+          ) : blankStep === 'guide_choice' ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+              <button
+                type="button"
+                onClick={() => setBlankStep('details')}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                ← Back
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800 mb-1">Will you be using a discussion guide?</h2>
+                <p className="text-xs text-gray-500">A discussion guide lets you assign notes to specific questions during capture, making your research more structured and traceable.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBlankStep('guide_build')}
+                  className="p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-left transition-colors"
+                >
+                  <div className="text-lg mb-1">📝</div>
+                  <div className="font-semibold text-sm text-gray-800">Yes, set one up</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Add questions now or later</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => createProject(false, [])}
+                  disabled={loading}
+                  className="p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-left transition-colors disabled:opacity-50"
+                >
+                  <div className="text-lg mb-1">🗒️</div>
+                  <div className="font-semibold text-sm text-gray-800">No, explore freely</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Unstructured note capture</div>
+                </button>
+              </div>
+            </div>
+
+          /* ── Step 3: Guide builder ─────────────────────────────────────── */
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+              <button
+                type="button"
+                onClick={() => setBlankStep('guide_choice')}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                ← Back
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800 mb-1">Set up your discussion guide</h2>
+                <p className="text-xs text-gray-500">Add the questions you plan to ask. You can also add or edit questions later inside the project. An &ldquo;Other observation&rdquo; option is always included automatically.</p>
+              </div>
+              <div className="space-y-1">
+                {draftQuestions.map((q, i) => (
+                  <div key={i} className="group flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={q.text}
+                      onChange={e => updateDraftQuestion(i, 'text', e.target.value)}
+                      placeholder={`Question ${i + 1}`}
+                      autoFocus={i === draftQuestions.length - 1 && i > 0}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    {draftQuestions.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeDraftQuestion(i)}
+                        className="text-gray-300 hover:text-red-400 text-lg leading-none transition-colors p-0.5 cursor-pointer flex-shrink-0 opacity-0 group-hover:opacity-100"
+                        title="Remove question"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={addDraftQuestion}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                + Add question
+              </button>
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                <button
+                  type="button"
+                  disabled={loading || !draftQuestions.some(q => q.text.trim())}
+                  onClick={() => createProject(true, draftQuestions)}
+                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Creating...' : 'Create project'}
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => createProject(false, [])}
+                  className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                >
+                  Skip guide for now
+                </button>
+              </div>
+            </div>
+          )
         )}
       </main>
     </div>

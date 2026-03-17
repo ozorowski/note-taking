@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole, logActivity } from '@/lib/api-helpers'
 import { broadcastProjectUpdate } from '@/lib/pusher'
 
 type Params = { params: Promise<{ recommendationId: string }> }
@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     [content?.trim() || null, rationale !== undefined ? rationale?.trim() ?? null : null, recommendationId]
   )
   await broadcastProjectUpdate(rec.project_id)
+  await logActivity(rec.project_id, user.user_id, 'edited', 'recommendation', recommendationId)
   return NextResponse.json(result.rows[0])
 }
 

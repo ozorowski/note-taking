@@ -3,6 +3,11 @@
 import { useState, useEffect } from 'react'
 import type { Interview } from '@/lib/types'
 
+function fmt(d: string | Date) {
+  const date = new Date(d)
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' · ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 interface Props {
   interview: Interview
   onClose: () => void
@@ -45,15 +50,24 @@ export default function InterviewDrawer({ interview, onClose, onRefresh, onReque
       {/* Panel */}
       <div className="relative w-[480px] max-w-full bg-white shadow-xl flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-          <h2 className="font-semibold text-gray-800">Interview</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 flex-shrink-0">
+          <div>
+            <h2 className="font-semibold text-gray-800">
+              {interview.display_number ? `Interview ${interview.display_number}` : 'Interview'}
+            </h2>
+            <p className="text-[11px] text-gray-400 mt-1">
+              {interview.creator_name && <>Created by <span className="font-medium">{interview.creator_name}</span> · </>}
+              {fmt(interview.created_at)}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none mt-0.5">
             ×
           </button>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
           {/* Participant name */}
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
@@ -68,27 +82,22 @@ export default function InterviewDrawer({ interview, onClose, onRefresh, onReque
             />
           </div>
 
-          {/* Raw notes */}
+          {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-              Raw notes <span className="font-normal text-gray-300">(optional)</span>
+              Description <span className="font-normal text-gray-300">(optional)</span>
             </label>
             <textarea
               value={rawNotes}
               onChange={e => setRawNotes(e.target.value)}
-              placeholder="Paste a transcript or rough notes from the session..."
-              rows={10}
+              placeholder="e.g. role, context, or any notes about this participant..."
+              rows={6}
               className="w-full text-sm text-gray-700 leading-relaxed border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
             />
           </div>
 
-          {/* Date */}
-          <p className="text-xs text-gray-400">
-            Added {new Date(interview.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-          </p>
-
-          {/* Save / Cancel */}
-          <div className="flex gap-2">
+          {/* Save / Cancel / Delete */}
+          <div className="flex items-center gap-2">
             <button
               onClick={save}
               disabled={!name.trim() || saving}
@@ -102,15 +111,11 @@ export default function InterviewDrawer({ interview, onClose, onRefresh, onReque
             >
               Cancel
             </button>
-          </div>
-
-          {/* Delete */}
-          <div className="pt-4 border-t border-gray-100">
             <button
               onClick={onRequestDelete}
-              className="text-sm text-red-400 hover:text-red-600 transition-colors"
+              className="ml-auto px-4 py-2 text-sm text-red-400 hover:text-red-600 transition-colors"
             >
-              Delete interview…
+              Delete
             </button>
           </div>
         </div>

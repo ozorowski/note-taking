@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import type { Recommendation, Insight, Theme, Note } from '@/lib/types'
 import EntityDrawer from '@/components/EntityDrawer'
+import TraceyModal from '@/components/TraceyModal'
 
 type InsightWithIds = Insight & { theme_ids?: string[] }
 type RecommendationWithIds = Recommendation & { insight_ids?: string[] }
@@ -46,21 +47,30 @@ export default function RecommendationsPhase({
   const [aiDrafts, setAiDrafts] = useState<{ recommendation: string; primary_insight_id: string; link_justification: string }[]>([])
   const [lowQualityCount, setLowQualityCount] = useState(0)
   const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
+  const [aiError, setAiError] = useState('')
+  const [aiProvider, setAiProvider] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/ai/provider').then(r => r.json()).then(d => setAiProvider(d.provider)).catch(() => {})
+  }, [])
 
   async function generateDrafts() {
     setAiLoading(true)
     setAiDrafts([])
     setLowQualityCount(0)
     setAddedIndices(new Set())
+    setAiError('')
     const res = await fetch('/api/ai/draft-recommendation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId }),
     })
+    const data = await res.json()
     if (res.ok) {
-      const data = await res.json()
       setAiDrafts(data.drafts || [])
       setLowQualityCount(data.low_quality_count || 0)
+    } else {
+      setAiError(data.error || 'AI unavailable — try again later')
     }
     setAiLoading(false)
   }
@@ -127,6 +137,8 @@ export default function RecommendationsPhase({
   }
 
   return (
+    <>
+    {aiLoading && <TraceyModal message={`Drafting recommendations from your insights…${aiProvider ? ` · ${aiProvider}` : ''}`} />}
     <div className="max-w-5xl mx-auto px-6 py-8">
       <div className="mb-6">
         <h2 className="text-lg font-semibold">Recommendations</h2>
@@ -181,6 +193,9 @@ export default function RecommendationsPhase({
               </div>
             </>
           )}
+          {aiError && (
+            <p className="text-xs text-red-500 mt-1.5">{aiError}</p>
+          )}
           {aiDrafts.length > 0 && (
             <div className="space-y-3 border-t border-purple-200 pt-4">
               <p className="text-xs font-semibold text-purple-700">
@@ -194,7 +209,7 @@ export default function RecommendationsPhase({
 
                     {/* Targeted insight chip */}
                     {targetedInsight && (
-                      <div className="flex items-start gap-1.5">
+                      <div className="flex items-center gap-1.5">
                         <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
                           Targets
                         </span>
@@ -307,30 +322,22 @@ export default function RecommendationsPhase({
         </div>
       ) : (
         <div className="space-y-4">
-          {recommendations.map((rec, i) => {
+          {recommendations.map(rec => {
             const linkedInsights = insights.filter(ins => rec.insight_ids?.includes(ins.id))
             return (
               <div
                 key={rec.id}
-                className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:shadow-md transition-shadow group"
-                onClick={() => setSelected(rec)}
+                className={`bg-white border border-gray-200 rounded-xl p-5 transition-all ${isEditor ? 'cursor-pointer hover:border-blue-400 hover:ring-1 hover:ring-blue-400' : ''}`}
+                onClick={isEditor ? () => setSelected(rec) : undefined}
               >
-                <div className="flex items-start gap-3 mb-3">
-                  <span className="flex-shrink-0 w-7 h-7 rounded-full bg-orange-100 text-orange-700 text-sm font-bold flex items-center justify-center">
-                    {i + 1}
+                {rec.display_number && (
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-2">
+                    Recommendation {rec.display_number}
                   </span>
-                  <p className="flex-1 text-sm text-gray-800 leading-relaxed">{rec.content}</p>
-                  {isEditor && (
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteRec(rec.id) }}
-                      className="text-gray-200 hover:text-red-500 text-xl leading-none opacity-0 group-hover:opacity-100 flex-shrink-0"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
+                )}
+                <p className="text-sm text-gray-800 leading-relaxed mb-3">{rec.content}</p>
                 {linkedInsights.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 ml-10">
+                  <div className="flex flex-wrap gap-1.5">
                     {linkedInsights.map(ins => (
                       <span
                         key={ins.id}
@@ -341,7 +348,7 @@ export default function RecommendationsPhase({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-amber-500 ml-10">⚠ No insights linked — click to link</p>
+                  <p className="text-xs text-amber-500">⚠ No insights linked — click to link</p>
                 )}
               </div>
             )
@@ -358,10 +365,13 @@ export default function RecommendationsPhase({
           insights={insights}
           notes={notes}
           isEditor={isEditor}
+          initialEditing={true}
           onClose={() => setSelected(null)}
           onRefresh={() => { onRefresh() }}
+          onDelete={() => deleteRec(selected.id)}
         />
       )}
     </div>
+    </>
   )
 }

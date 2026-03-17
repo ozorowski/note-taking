@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole } from '@/lib/api-helpers'
+import { getAuthedUser, unauthorized, forbidden, notFound, getProjectRole, logActivity } from '@/lib/api-helpers'
 
 type Params = { params: Promise<{ interviewId: string }> }
 
@@ -18,11 +18,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const role = await getProjectRole(iv.project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
-  const { participant_name, raw_notes } = await request.json()
+  const body = await request.json()
+  const { participant_name, raw_notes } = body
+  const settingConsent = body.consent_confirmed === true
   const result = await query(
-    `UPDATE interviews SET participant_name = COALESCE($1, participant_name), raw_notes = COALESCE($2, raw_notes), updated_at = NOW() WHERE id = $3 RETURNING *`,
-    [participant_name?.trim() || null, raw_notes !== undefined ? raw_notes?.trim() ?? null : null, interviewId]
+    `UPDATE interviews
+     SET participant_name = COALESCE($1, participant_name),
+         raw_notes = COALESCE($2, raw_notes),
+         consent_confirmed = CASE WHEN $4 THEN TRUE ELSE consent_confirmed END,
+         consent_confirmed_at = CASE WHEN $4 THEN NOW() ELSE consent_confirmed_at END,
+         consent_confirmed_by = CASE WHEN $4 THEN $5::uuid ELSE consent_confirmed_by END,
+         updated_at = NOW()
+     WHERE id = $3 RETURNING *`,
+    [participant_name?.trim() || null, raw_notes !== undefined ? raw_notes?.trim() ?? null : null, interviewId, settingConsent, user.user_id]
   )
+  await logActivity(iv.project_id, user.user_id, 'edited', 'interview', interviewId)
   return NextResponse.json(result.rows[0])
 }
 

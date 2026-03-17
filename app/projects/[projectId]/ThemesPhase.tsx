@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, Fragment } from 'react'
+import React, { useState, useRef, Fragment, useEffect } from 'react'
 import type { Note, Theme, ProjectCounts, GuideQuestion } from '@/lib/types'
 
 import TraceyModal from '@/components/TraceyModal'
@@ -21,17 +21,6 @@ type DragPayload =
 
 type SortMode = 'note_id' | 'participant' | 'evidence_type' | 'date_added'
 
-type GridDragInfo = {
-  id: string
-  type: 'note' | 'group'
-  groupNotes: Note[]
-  sourceThemeId: string
-  offsetX: number   // cursor offset within card
-  offsetY: number
-  width: number
-  height: number
-  orderedItemIds: string[]  // snapshot of item order at drag start
-}
 
 export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQuestions, onRefresh }: Props) {
   const [addingTheme, setAddingTheme] = useState(false)
@@ -59,6 +48,11 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
   const [confirmDeleteThemeId, setConfirmDeleteThemeId] = useState<string | null>(null)
   const [expandedUngroupedGroupIds, setExpandedUngroupedGroupIds] = useState<Set<string>>(new Set())
   const [expandedThemeGroupIds, setExpandedThemeGroupIds] = useState<Set<string>>(new Set())
+  const [aiProvider, setAiProvider] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/ai/provider').then(r => r.json()).then(d => setAiProvider(d.provider)).catch(() => {})
+  }, [])
   const [dragOverAddTheme, setDragOverAddTheme] = useState(false)
   const [expandedThemeId, setExpandedThemeId] = useState<string | null>(null)
   const [openMenuThemeId, setOpenMenuThemeId] = useState<string | null>(null)
@@ -66,20 +60,6 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const savedScrollLeft = useRef(0)
 
-  // ── Grid-mode pointer drag (expanded view only) ────────────────────────────
-  const [gridDragInfo, setGridDragInfo] = useState<GridDragInfo | null>(null)
-  const [gridDragStarted, setGridDragStarted] = useState(false)
-  const [gridInsertIdx, setGridInsertIdx] = useState<number | null>(null)
-  const [gridDragOverUngrouped, setGridDragOverUngrouped] = useState(false)
-  const gridItemRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const ghostRef = useRef<HTMLDivElement>(null)
-  const gridDragInfoRef = useRef<GridDragInfo | null>(null)
-  const gridInsertIdxRef = useRef<number | null>(null)
-  const gridDragStartedRef = useRef(false)
-  const ungroupedPanelRef = useRef<HTMLDivElement>(null)
-  const expandedGridRef = useRef<HTMLDivElement>(null)
-  const gridStartPos = useRef({ x: 0, y: 0 })
-  const autoScrollRaf = useRef<number | null>(null)
 
   function setThemeSort(themeId: string, mode: SortMode) {
     setThemeSortMode(prev => ({ ...prev, [themeId]: mode }))
@@ -237,10 +217,6 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
   async function detachNote(themeId: string, noteId: string) {
     await fetch(`/api/themes/${themeId}/notes?noteId=${noteId}`, { method: 'DELETE' })
     onRefresh()
-  }
-
-  async function deleteTheme(id: string) {
-    setConfirmDeleteThemeId(id)
   }
 
   async function confirmDeleteTheme() {
@@ -478,199 +454,6 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
     }
   }
 
-  // ── Grid drag execution helpers ────────────────────────────────────────────
-
-  function executeGridDropToTheme(themeId: string, info: GridDragInfo, insertIndex: number) {
-    const items = buildThemeItems(themeId)
-    const currentIds = items.map(i => i.id)
-
-    if (info.type === 'group') {
-      if (info.sourceThemeId === themeId) {
-        const fromIndex = currentIds.indexOf(info.id)
-        if (fromIndex === -1) return
-        const to = insertIndex > fromIndex ? insertIndex - 1 : insertIndex
-        const newIds = [...currentIds]
-        newIds.splice(fromIndex, 1)
-        newIds.splice(to, 0, info.id)
-        setThemeItemOrder(prev => ({ ...prev, [themeId]: newIds }))
-        return
-      }
-      const newIds = [...currentIds]
-      newIds.splice(insertIndex, 0, info.id)
-      setThemeItemOrder(prev => ({ ...prev, [themeId]: newIds }))
-      const add = () => Promise.all(info.groupNotes.map(n =>
-        fetch(`/api/themes/${themeId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note_id: n.id }) })
-      ))
-      if (info.sourceThemeId) {
-        Promise.all(info.groupNotes.map(n =>
-          fetch(`/api/themes/${info.sourceThemeId}/notes?noteId=${n.id}`, { method: 'DELETE' })
-        )).then(() => add()).then(() => onRefresh())
-      } else { add().then(() => onRefresh()) }
-      return
-    }
-
-    // Note
-    if (info.sourceThemeId === themeId) {
-      const fromIndex = currentIds.indexOf(info.id)
-      if (fromIndex === -1) return
-      const to = insertIndex > fromIndex ? insertIndex - 1 : insertIndex
-      const newIds = [...currentIds]
-      newIds.splice(fromIndex, 1)
-      newIds.splice(to, 0, info.id)
-      setThemeItemOrder(prev => ({ ...prev, [themeId]: newIds }))
-      return
-    }
-    const newIds = [...currentIds]
-    newIds.splice(insertIndex, 0, info.id)
-    setThemeItemOrder(prev => ({ ...prev, [themeId]: newIds }))
-    if (info.sourceThemeId) {
-      fetch(`/api/themes/${info.sourceThemeId}/notes?noteId=${info.id}`, { method: 'DELETE' })
-        .then(() => fetch(`/api/themes/${themeId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note_id: info.id }) }))
-        .then(() => { setRecentlyDroppedNoteId(info.id); setTimeout(() => setRecentlyDroppedNoteId(null), 900); onRefresh() })
-    } else {
-      fetch(`/api/themes/${themeId}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note_id: info.id }) })
-        .then(() => { setRecentlyDroppedNoteId(info.id); setTimeout(() => setRecentlyDroppedNoteId(null), 900); onRefresh() })
-    }
-  }
-
-  function executeGridDropUngrouped(info: GridDragInfo) {
-    if (!info.sourceThemeId) return
-    if (info.type === 'group') {
-      Promise.all(info.groupNotes.map(n =>
-        fetch(`/api/themes/${info.sourceThemeId}/notes?noteId=${n.id}`, { method: 'DELETE' })
-      )).then(() => onRefresh())
-    } else {
-      const note = sharedNotes.find(n => n.id === info.id)
-      const themeIds = (note?.theme_ids && note.theme_ids.length > 0) ? note.theme_ids : [info.sourceThemeId]
-      Promise.all(themeIds.map(tid =>
-        fetch(`/api/themes/${tid}/notes?noteId=${info.id}`, { method: 'DELETE' })
-      )).then(() => { setRecentlyDroppedNoteId(info.id); setTimeout(() => setRecentlyDroppedNoteId(null), 900); onRefresh() })
-    }
-  }
-
-  function handleGridPointerDown(e: React.PointerEvent, item: ThemeItem, themeId: string) {
-    if (!isEditor || e.button !== 0) return
-    e.preventDefault()
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const info: GridDragInfo = {
-      id: item.id,
-      type: item.type,
-      groupNotes: item.type === 'group' ? item.groupNotes : [],
-      sourceThemeId: themeId,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-      orderedItemIds: buildThemeItems(themeId).map(i => i.id),
-    }
-    gridDragInfoRef.current = info
-    gridStartPos.current = { x: e.clientX, y: e.clientY }
-    gridDragStartedRef.current = false
-    gridInsertIdxRef.current = null
-    setGridDragInfo(info)
-    setGridDragStarted(false)
-    setGridInsertIdx(null)
-    setGridDragOverUngrouped(false)
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  React.useEffect(() => {
-    if (!gridDragInfo) return
-
-    function onPointerMove(e: PointerEvent) {
-      const info = gridDragInfoRef.current
-      if (!info) return
-
-      const dx = e.clientX - gridStartPos.current.x
-      const dy = e.clientY - gridStartPos.current.y
-      if (!gridDragStartedRef.current && Math.hypot(dx, dy) > 6) {
-        gridDragStartedRef.current = true
-        setGridDragStarted(true)
-      }
-      if (!gridDragStartedRef.current) return
-
-      // Move ghost via direct DOM (no React re-render)
-      if (ghostRef.current) {
-        ghostRef.current.style.left = `${e.clientX - info.offsetX}px`
-        ghostRef.current.style.top = `${e.clientY - info.offsetY}px`
-      }
-
-      // Highlight ungrouped panel
-      const ungroupedEl = ungroupedPanelRef.current
-      const isOverUngrouped = ungroupedEl ? e.clientX <= ungroupedEl.getBoundingClientRect().right : false
-      setGridDragOverUngrouped(isOverUngrouped)
-
-      // Find insert index
-      if (!isOverUngrouped) {
-        let insertIdx = info.orderedItemIds.length
-        for (let i = 0; i < info.orderedItemIds.length; i++) {
-          const itemId = info.orderedItemIds[i]
-          if (itemId === info.id) continue
-          const el = gridItemRefs.current.get(itemId)
-          if (!el) continue
-          const r = el.getBoundingClientRect()
-          if (e.clientY < r.top + r.height / 2) { insertIdx = i; break }
-        }
-        if (gridInsertIdxRef.current !== insertIdx) {
-          gridInsertIdxRef.current = insertIdx
-          setGridInsertIdx(insertIdx)
-        }
-      }
-
-      // Auto-scroll the expanded grid
-      if (autoScrollRaf.current) cancelAnimationFrame(autoScrollRaf.current)
-      const gridEl = expandedGridRef.current
-      if (gridEl) {
-        const r = gridEl.getBoundingClientRect()
-        const EDGE = 80
-        const distTop = e.clientY - r.top
-        const distBottom = r.bottom - e.clientY
-        if (distTop < EDGE || distBottom < EDGE) {
-          autoScrollRaf.current = requestAnimationFrame(() => {
-            if (!gridEl) return
-            if (distTop < EDGE) gridEl.scrollTop -= (1 - distTop / EDGE) * 12
-            else if (distBottom < EDGE) gridEl.scrollTop += (1 - distBottom / EDGE) * 12
-          })
-        }
-      }
-    }
-
-    function onPointerUp(e: PointerEvent) {
-      if (autoScrollRaf.current) { cancelAnimationFrame(autoScrollRaf.current); autoScrollRaf.current = null }
-      const info = gridDragInfoRef.current
-      const started = gridDragStartedRef.current
-      const insertIdx = gridInsertIdxRef.current
-
-      gridDragInfoRef.current = null
-      gridDragStartedRef.current = false
-      gridInsertIdxRef.current = null
-      setGridDragInfo(null)
-      setGridDragStarted(false)
-      setGridInsertIdx(null)
-      setGridDragOverUngrouped(false)
-
-      if (!info || !started) return
-
-      const ungroupedEl = ungroupedPanelRef.current
-      const isOverUngrouped = ungroupedEl ? e.clientX <= ungroupedEl.getBoundingClientRect().right : false
-
-      if (isOverUngrouped) {
-        executeGridDropUngrouped(info)
-      } else if (expandedThemeId) {
-        const items = buildThemeItems(expandedThemeId)
-        executeGridDropToTheme(expandedThemeId, info, insertIdx !== null ? insertIdx : items.length)
-      }
-    }
-
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
-      if (autoScrollRaf.current) { cancelAnimationFrame(autoScrollRaf.current); autoScrollRaf.current = null }
-    }
-  }, [!!gridDragInfo])
-
   function clearThemeDragState() {
     setDragThemeId(null)
     setDragOverThemeInsertIdx(null)
@@ -698,7 +481,7 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
 
   return (
     <>
-    {aiClustering && <TraceyModal message="Clustering your notes into themes…" />}
+    {aiClustering && <TraceyModal message={`Clustering your notes into themes…${aiProvider ? ` · ${aiProvider}` : ''}`} />}
     <div className="flex flex-col" style={{ height: 'calc(100vh - 140px)' }}>
       {/* Progress bar + controls */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
@@ -741,10 +524,9 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: ungrouped notes */}
         <div
-          ref={ungroupedPanelRef}
           className={[
             'w-[304px] flex-shrink-0 border-r overflow-y-auto transition-colors',
-            (dragOverUngrouped && drag?.sourceThemeId) || (gridDragOverUngrouped && gridDragInfo?.sourceThemeId)
+            dragOverUngrouped && drag?.sourceThemeId
               ? 'bg-blue-50 border-blue-300'
               : 'bg-gray-50 border-gray-200',
           ].join(' ')}
@@ -1173,14 +955,12 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                       <div className="mt-2 h-px bg-gray-200" />
                     </div>
                     <div
-                      ref={expandedThemeId === theme.id ? expandedGridRef : undefined}
                       className={expandedThemeId === theme.id
                         ? 'grid grid-cols-2 xl:grid-cols-3 gap-3 p-4 items-start overflow-y-auto flex-1'
                         : 'px-3 pt-2 pb-3 flex flex-col gap-2 flex-1'
                       }>
                       {themeItems.map((item, itemIdx) => {
                         const isGridMode = expandedThemeId === theme.id
-                        // HTML5 DnD indicators (column mode)
                         const isDragging = drag !== null && !dragThemeId
                         const showBefore = isDragging &&
                           insertPoint?.themeId === theme.id && insertPoint.index === itemIdx
@@ -1188,48 +968,36 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                           insertPoint?.themeId === theme.id &&
                           insertPoint.index === itemIdx + 1 &&
                           itemIdx === themeItems.length - 1
-                        // Pointer DnD indicators (grid mode)
-                        const isGridDraggingThis = gridDragStarted && gridDragInfo?.id === item.id
-                        const showGridPlaceholderBefore = isGridMode && gridDragStarted && !gridDragOverUngrouped &&
-                          gridInsertIdx === itemIdx && gridDragInfo?.id !== item.id
 
                         if (item.type === 'group') {
                           const isExpanded = expandedThemeGroupIds.has(item.groupId)
                           const isDraggingThis = drag?.type === 'group' && drag.id === item.groupId
                           return (
-                            <Fragment key={item.groupId}>
-                              {showGridPlaceholderBefore && (
-                                <div className="border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50" style={{ minHeight: gridDragInfo?.height }} />
-                              )}
-                            <div className="relative">
+                            <div key={item.groupId} className="relative">
                               {showBefore && (
-                                <div className="absolute z-10 pointer-events-none bg-blue-400 rounded-full inset-x-0 -top-[5px] h-0.5" />
+                                <div className={`absolute z-10 pointer-events-none bg-blue-400 rounded-full ${isGridMode ? 'inset-y-0 -left-[5px] w-0.5' : 'inset-x-0 -top-[5px] h-0.5'}`} />
                               )}
                               {showAfter && (
-                                <div className="absolute z-10 pointer-events-none bg-blue-400 rounded-full inset-x-0 -bottom-[5px] h-0.5" />
+                                <div className={`absolute z-10 pointer-events-none bg-blue-400 rounded-full ${isGridMode ? 'inset-y-0 -right-[5px] w-0.5' : 'inset-x-0 -bottom-[5px] h-0.5'}`} />
                               )}
                               <div
-                                ref={el => { if (el) gridItemRefs.current.set(item.id, el); else gridItemRefs.current.delete(item.id) }}
                                 className="relative group/gcard"
-                                draggable={isEditor && !isGridMode}
-                                onDragStart={!isGridMode ? e => {
+                                draggable={isEditor}
+                                onDragStart={e => {
                                   e.stopPropagation()
                                   setDrag({ type: 'group', id: item.groupId, groupNotes: item.groupNotes, sourceThemeId: theme.id })
-                                } : undefined}
-                                onDragEnd={!isGridMode ? clearDrag : undefined}
-                                onDragOver={!isGridMode ? e => handleItemDragOver(e, theme.id, itemIdx) : undefined}
-                                onPointerDown={isGridMode ? e => handleGridPointerDown(e, item, theme.id) : undefined}
+                                }}
+                                onDragEnd={clearDrag}
+                                onDragOver={e => handleItemDragOver(e, theme.id, itemIdx)}
                               >
                                 <div className={[
                                   'border rounded-lg overflow-hidden select-none transition-all duration-200',
                                   isEditor ? 'cursor-grab active:cursor-grabbing' : '',
-                                  isGridDraggingThis
-                                    ? 'opacity-30 saturate-0 scale-95'
-                                    : isDraggingThis
-                                      ? 'bg-gray-50 border-gray-100 opacity-30 saturate-0'
-                                      : (gridDragStarted || drag)
-                                        ? 'bg-gray-50 border-gray-100 opacity-90'
-                                        : 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm',
+                                  isDraggingThis
+                                    ? 'bg-gray-50 border-gray-100 opacity-30 saturate-0'
+                                    : drag
+                                      ? 'bg-gray-50 border-gray-100 opacity-90'
+                                      : 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm',
                                 ].join(' ')}>
                                   <div
                                     className="px-3 pt-2.5 pb-2 flex items-center justify-between gap-2 cursor-pointer"
@@ -1322,31 +1090,23 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                                 </div>
                               </div>
                             </div>
-                            </Fragment>
                           )
                         }
 
                         const note = item.note
                         const isDropped = recentlyDroppedNoteId === note.id
-                        const showGridPlaceholderBeforeNote = isGridMode && gridDragStarted && !gridDragOverUngrouped &&
-                          gridInsertIdx === itemIdx && gridDragInfo?.id !== note.id
 
                         return (
-                          <Fragment key={note.id}>
-                            {showGridPlaceholderBeforeNote && (
-                              <div className="border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50" style={{ minHeight: gridDragInfo?.height }} />
-                            )}
-                          <div className="relative">
+                          <div key={note.id} className="relative">
                             {showBefore && (
-                              <div className="absolute z-10 pointer-events-none bg-blue-400 rounded-full inset-x-0 -top-[5px] h-0.5" />
+                              <div className={`absolute z-10 pointer-events-none bg-blue-400 rounded-full ${isGridMode ? 'inset-y-0 -left-[5px] w-0.5' : 'inset-x-0 -top-[5px] h-0.5'}`} />
                             )}
                             {showAfter && (
-                              <div className="absolute z-10 pointer-events-none bg-blue-400 rounded-full inset-x-0 -bottom-[5px] h-0.5" />
+                              <div className={`absolute z-10 pointer-events-none bg-blue-400 rounded-full ${isGridMode ? 'inset-y-0 -right-[5px] w-0.5' : 'inset-x-0 -bottom-[5px] h-0.5'}`} />
                             )}
                             <div
-                              ref={el => { if (el) gridItemRefs.current.set(note.id, el); else gridItemRefs.current.delete(note.id) }}
-                              draggable={isEditor && !isGridMode}
-                              onDragStart={!isGridMode ? e => {
+                              draggable={isEditor}
+                              onDragStart={e => {
                                 e.stopPropagation()
                                 const ghost = e.currentTarget.cloneNode(true) as HTMLElement
                                 ghost.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:' + e.currentTarget.offsetWidth + 'px;opacity:1;'
@@ -1354,22 +1114,19 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                                 e.dataTransfer.setDragImage(ghost, e.nativeEvent.offsetX, e.nativeEvent.offsetY)
                                 setTimeout(() => document.body.removeChild(ghost), 0)
                                 setDrag({ type: 'note', id: note.id, sourceThemeId: theme.id })
-                              } : undefined}
-                              onDragEnd={!isGridMode ? clearDrag : undefined}
-                              onDragOver={!isGridMode ? e => handleItemDragOver(e, theme.id, itemIdx) : undefined}
-                              onPointerDown={isGridMode ? e => handleGridPointerDown(e, item, theme.id) : undefined}
+                              }}
+                              onDragEnd={clearDrag}
+                              onDragOver={e => handleItemDragOver(e, theme.id, itemIdx)}
                               className={[
                                 'border rounded-lg p-2.5 text-sm text-gray-700 group relative transition-all duration-200',
                                 isEditor ? 'cursor-grab active:cursor-grabbing' : '',
-                                isGridMode && gridDragStarted && gridDragInfo?.id === note.id
-                                  ? 'opacity-30 saturate-0 scale-95'
-                                  : isDropped
-                                    ? 'bg-blue-50 border-blue-300 shadow-sm shadow-blue-100'
-                                    : drag?.type === 'note' && drag.id === note.id
-                                      ? 'bg-gray-50 border-gray-100 opacity-30 saturate-0 border-dashed border-blue-300'
-                                      : (gridDragStarted || drag)
-                                        ? 'bg-gray-50 border-gray-100 opacity-90'
-                                        : 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm',
+                                isDropped
+                                  ? 'bg-blue-50 border-blue-300 shadow-sm shadow-blue-100'
+                                  : drag?.type === 'note' && drag.id === note.id
+                                    ? 'bg-gray-50 border-gray-100 opacity-30 saturate-0 border-dashed border-blue-300'
+                                    : drag
+                                      ? 'bg-gray-50 border-gray-100 opacity-90'
+                                      : 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm',
                               ].join(' ')}
                             >
                               {note.display_number && (
@@ -1406,7 +1163,7 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                               {isEditor && (
                                 <button
                                   onClick={() => detachNote(theme.id, note.id)}
-                                  className={`absolute top-1.5 right-1.5 text-gray-300 hover:text-gray-600 transition-colors ${(drag || gridDragStarted) ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}
+                                  className={`absolute top-1.5 right-1.5 text-gray-300 hover:text-gray-600 transition-colors ${drag ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}
                                   title="Remove from theme"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1417,18 +1174,11 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
                               )}
                             </div>
                           </div>
-                          </Fragment>
                         )
                       })}
 
-                      {/* End-of-list placeholder for grid drag */}
-                      {isGridMode && gridDragStarted && !gridDragOverUngrouped &&
-                        gridInsertIdx === themeItems.length && (
-                        <div className="border-2 border-dashed border-blue-400 rounded-lg bg-blue-50/50" style={{ minHeight: gridDragInfo?.height }} />
-                      )}
-
                       {themeItems.length === 0 && (
-                        (isOver || (isGridMode && gridDragStarted && !gridDragOverUngrouped))
+                        isOver
                           ? <div className="border-2 border-dashed border-blue-500 bg-blue-50 rounded-lg h-16" />
                           : <p className="text-xs text-gray-300 text-center py-4">Drop notes here</p>
                       )}
@@ -1504,55 +1254,6 @@ export default function ThemesPhase({ projectId, notes, themes, isEditor, guideQ
       </div>
 
     </div>
-
-      {/* ── Floating ghost card (grid drag) ──────────────────────────────── */}
-      {gridDragStarted && gridDragInfo && (() => {
-        const ghostNote = gridDragInfo.type === 'note' ? sharedNotes.find(n => n.id === gridDragInfo.id) : null
-        return (
-          <div
-            ref={ghostRef}
-            style={{
-              position: 'fixed',
-              width: gridDragInfo.width,
-              left: -9999,
-              top: -9999,
-              zIndex: 9999,
-              pointerEvents: 'none',
-              transform: 'rotate(0.75deg) scale(1.04)',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
-              borderRadius: 8,
-              willChange: 'left, top',
-            }}
-          >
-            {gridDragInfo.type === 'group' ? (
-              <div className="border border-blue-300 bg-white rounded-lg overflow-hidden">
-                <div className="px-3 pt-2.5 pb-2 flex items-center gap-1.5">
-                  <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-                    Duplicate capture
-                  </span>
-                  <span className="text-[11px] text-gray-400">×{gridDragInfo.groupNotes.length}</span>
-                </div>
-                <div className="px-3 pb-3">
-                  <p className="text-sm text-gray-700 leading-relaxed break-words line-clamp-3">
-                    {gridDragInfo.groupNotes[0]?.content}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="border border-blue-300 bg-white rounded-lg p-2.5">
-                {ghostNote?.display_number && (
-                  <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
-                    Note {ghostNote.display_number}
-                  </span>
-                )}
-                <p className="text-sm text-gray-700 leading-relaxed break-words line-clamp-4">
-                  {ghostNote?.content}
-                </p>
-              </div>
-            )}
-          </div>
-        )
-      })()}
 
       {confirmDeleteThemeId && (
         <div

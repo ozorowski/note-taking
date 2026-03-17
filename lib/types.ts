@@ -71,6 +71,33 @@ export type Phase = 'interviews' | 'capture' | 'notes' | 'themes' | 'insights' |
 export type PhaseStatus = 'locked' | 'in_progress' | 'complete'
 export type Role = 'owner' | 'editor' | 'viewer'
 
+// ── Archetypes & Emerging Needs ───────────────────────────────────────────────
+
+export interface EmergingNeed {
+  need_statement: string        // "Users need a way to…"
+  context: string               // When/where it surfaces
+  linked_insight_ids: string[]  // ≥1 insight
+  evidence_summary: string      // note count, participant spread
+  confidence: 'High' | 'Medium' | 'Low'
+  rationale: string
+}
+
+export interface UserArchetype {
+  name: string                  // Behavioural, e.g. "Time-pressured repeat user"
+  core_goal: string
+  typical_context: string
+  key_behaviours: string[]
+  attached_need_indices: number[] // indices into the sibling needs array
+  evidence_summary: string
+  confidence: 'High' | 'Medium' | 'Low'
+  unknowns: string              // "What we don't know yet"
+}
+
+export interface ArchetypesData {
+  needs: EmergingNeed[]
+  archetypes: UserArchetype[]
+}
+
 export interface Project {
   id: string
   title: string
@@ -78,8 +105,11 @@ export interface Project {
   current_phase: Phase
   owner_id: string
   demo: boolean
+  has_guide?: boolean
   executive_summary?: string | null
   executive_summary_generated_at?: string | null
+  archetypes_data?: ArchetypesData | null
+  archetypes_generated_at?: string | null
   created_at: Date
   updated_at: Date
 }
@@ -100,6 +130,21 @@ export interface Interview {
   created_by: string | null
   created_at: Date
   updated_at: Date
+  display_number?: number
+  creator_name?: string
+  consent_confirmed?: boolean
+  consent_confirmed_at?: Date | null
+  consent_confirmed_by?: string | null
+}
+
+export interface GuideQuestion {
+  id: string
+  project_id: string
+  text: string
+  stage_label: string | null
+  order_index: number
+  is_catch_all: boolean
+  created_at: Date
 }
 
 export interface Note {
@@ -115,11 +160,23 @@ export interface Note {
   created_by: string | null
   created_at: Date
   updated_at: Date
+  display_number?: number
   // joined fields
   tags?: string[]
   interview_name?: string
   creator_name?: string
   theme_ids?: string[]
+  guide_question_id?: string | null
+  guide_question_text?: string
+  capture_group_id?: string | null
+}
+
+export interface CaptureGroup {
+  id: string
+  project_id: string
+  interview_id: string
+  created_by: string | null
+  created_at: Date
 }
 
 export interface Theme {
@@ -131,9 +188,12 @@ export interface Theme {
   created_by: string | null
   created_at: Date
   updated_at: Date
+  display_number?: number
+  sort_order?: number
   // joined fields
   note_count?: number
   notes?: Note[]
+  creator_name?: string
 }
 
 export interface Insight {
@@ -148,6 +208,7 @@ export interface Insight {
   created_by: string | null
   created_at: Date
   updated_at: Date
+  display_number?: number
   // joined fields
   themes?: Theme[]
   theme_ids?: string[]
@@ -163,6 +224,7 @@ export interface Recommendation {
   created_by: string | null
   created_at: Date
   updated_at: Date
+  display_number?: number
   // joined fields
   insights?: Insight[]
   insight_ids?: string[]
@@ -202,4 +264,5 @@ export interface FullProject extends Project {
   insights: Insight[]
   recommendations: Recommendation[]
   counts: ProjectCounts
+  guide_questions: GuideQuestion[]
 }

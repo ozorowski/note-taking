@@ -11,9 +11,23 @@ export async function POST(request: NextRequest) {
   const role = await getProjectRole(project_id, user.user_id)
   if (!role || role === 'viewer') return forbidden()
 
+  const { rows: [{ exists }] } = await query(
+    `SELECT EXISTS(SELECT 1 FROM themes WHERE project_id = $1 AND LOWER(title) = LOWER($2)) AS exists`,
+    [project_id, title.trim()]
+  )
+  if (exists) return badRequest('A theme with this name already exists.')
+
+  const { rows: [{ next_num }] } = await query(
+    `SELECT COALESCE(MAX(display_number), 0) + 1 AS next_num FROM themes WHERE project_id = $1`,
+    [project_id]
+  )
+  const { rows: [{ next_sort }] } = await query(
+    `SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort FROM themes WHERE project_id = $1`,
+    [project_id]
+  )
   const result = await query(
-    `INSERT INTO themes (project_id, title, description, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [project_id, title.trim(), description?.trim() || null, user.user_id]
+    `INSERT INTO themes (project_id, title, description, created_by, display_number, sort_order) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [project_id, title.trim(), description?.trim() || null, user.user_id, next_num, next_sort]
   )
   await logActivity(project_id, user.user_id, 'created theme', 'theme', result.rows[0].id)
   return NextResponse.json(result.rows[0], { status: 201 })

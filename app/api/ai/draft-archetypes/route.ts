@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
   }
 
   const description = projectRes.rows[0]?.description?.trim() || null
-  const validInsightIds = new Set(insightsRes.rows.map((i: { id: string }) => i.id))
+  const validInsightIds = new Set(insightsRes.rows.map((i: any) => i.id as string))
 
   const anonymise = process.env.ENABLE_ANALYSIS_ANONYMISATION === 'true'
 
@@ -177,10 +177,7 @@ export async function POST(request: NextRequest) {
   }
 
   // For each insight, summarise evidence (unique participants, note count)
-  const insightList = insightsRes.rows.map((ins: {
-    id: string; content: string; root_cause: string | null;
-    iqs_score: number | null; supporting_note_ids: string[] | null; theme_titles: string[]
-  }, idx: number) => {
+  const insightList = insightsRes.rows.map((ins: any, idx: number) => {
     const supportingIds: string[] = ins.supporting_note_ids || []
     const participants = supportingIds.length > 0
       ? [...new Set(supportingIds.map(id => noteToParticipant.get(id)).filter(Boolean))]

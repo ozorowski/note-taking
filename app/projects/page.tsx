@@ -56,7 +56,7 @@ export default async function ProjectsPage() {
               <Link
                 key={p.id}
                 href={`/projects/${p.id}`}
-                className="group bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow"
+                className="group bg-white border border-gray-200 rounded-xl p-6 hover:border-blue-400 hover:ring-1 hover:ring-blue-400 transition-colors"
               >
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="font-semibold text-gray-900 leading-tight">{p.title}</h3>
